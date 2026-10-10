@@ -12,90 +12,117 @@ runtime dependencies.
 > (`sdks/javascript`). The Open4ID Core API (the server this SDK talks
 > to) lives there. To run your own backend, start from the monorepo.
 
-## Quick start
+## Quick start: the dialog element in 5 steps
+
+> Recommended path: a drop-in `<open4id-auth>` dialog that handles
+> email/password, sign-up, guest, and social popups with no navigation
+> on your side. The sections below document the pieces: the dialog in
+> detail, the headless client for custom UI, and session handling.
+
+### Step 0 — Publisher setup (dashboard, once)
+Register the exact redirect URI (e.g. `https://game.example.com/open4id/callback`)
+and the game origin in your Open4ID application. The Authentication page
+shows the exact callback values to paste at each provider console
+(Google / GitHub / Apple) — copy them character for character.
+
+### Step 1 — Install
 
 ```sh
 npm install @open4id/sdk
 ```
 
-```ts
-import { createAuthClient } from '@open4id/sdk';
-import { defineOpen4IDAuthElement } from '@open4id/sdk/ui';
+### Step 2 — Create the client and bootstrap once
 
-defineOpen4IDAuthElement();
+```ts
+import { createAuthClient, SessionStorageSessionStore } from '@open4id/sdk';
 
 const auth = createAuthClient({
-  appId: 'app_0123abcd',
-  environment: 'development',
-  publicSdkKey: 'sdk_pk_0123456789abcdef',
+  appId: 'app_0123abcd',               // from your Open4ID application
+  environment: 'production',           // development | sandbox | production
+  publicSdkKey: 'sdk_pk_...',         // public key only — never the secret key
   endpoint: 'https://id.open4id.example/api',
-  redirectUri: 'https://game.example.com/open4id/callback',
+  redirectUri: 'https://game.example.com/open4id/callback', // exact registered URI
+  // Opt-in: remember login across reloads (default is memory-only, lost on reload).
+  // storage: new SessionStorageSessionStore('open4id.session.app_0123abcd'),
 });
 
 await auth.bootstrap({ platform: 'web' });
-await auth.signInWithRedirect(); // or bind <open4id-auth> for an embedded dialog
 ```
 
-No bundler? Import straight from a CDN:
+### Step 3 — Drop in the login dialog
 
 ```html
-<script type="module">
-  import { createAuthClient } from 'https://unpkg.com/@open4id/sdk@0.1.0/dist/index.js';
-</script>
+<dialog id="login-dialog">
+  <open4id-auth id="login"></open4id-auth>
+</dialog>
 ```
-
-`@open4id/sdk/ui` needs a browser DOM. `@open4id/sdk` alone also runs
-in Node 18+ (SSR bootstrap, headless flows without popups).
-
----
-
-# Open4ID Client SDK
-
-`@open4id/sdk` implements the Web bootstrap contract for Open4ID Client SDK v1.
-It is framework-agnostic, uses the platform `fetch` API, and has no runtime
-dependencies.
 
 ```ts
-import { Open4ID } from '@open4id/sdk';
+import { defineOpen4IDAuthElement } from '@open4id/sdk/ui';
 
-Open4ID.initialize({
-  appId: 'app_0123abcd',
-  environment: 'development',
-  publicSdkKey: 'sdk_pk_0123456789abcdef',
-  endpoint: 'http://localhost:8080/api',
+defineOpen4IDAuthElement();
+// `!`: the element exists (same markup above); showGameLobby/showLandingPage are yours.
+const login = document.querySelector('open4id-auth')!;
+const dialog = document.querySelector('dialog')!;
+login.setBootstrap(auth.getBootstrap());
+login.setAuthClient(auth);
+login.addEventListener('open4id-signed-in', () => {
+  dialog.close();
+  showGameLobby(auth.getSession());
 });
+login.addEventListener('open4id-signed-out', () => showLandingPage());
+login.addEventListener('open4id-account-deleted', () => showLandingPage());
 
-const bootstrap = await Open4ID.bootstrap({
-  platform: 'web',
-  origin: 'http://localhost:4200',
-});
+dialog.showModal(); // open it from your Login button
 ```
+
+Email/password, sign-up, guest, Google, GitHub, and Apple all render
+inside — no provider code on your side.
+
+### Step 4 — Use the session
+
+```ts
+auth.getSession();        // { accessToken, expiresAt, scope, userId } or null
+auth.getCachedUser();     // { sub, email? } or null
+await auth.ensureSession(); // no-op when still valid, rotates when near expiry
+```
+
+### Step 5 — Refresh, sign out, delete
+
+```ts
+await auth.ensureSession();  // call before important calls
+await auth.signOut();        // revoke server-side, clear local state
+await auth.deleteAccount();  // permanent; needs a signed-in session
+```
+
+### Going further (one line each)
+- **Remember login across reloads:** pass `storage: new SessionStorageSessionStore('open4id.session.<appId>')` (see Sessions).
+- **Full-page redirect instead of dialog:** `await auth.signInWithRedirect()`, then `await auth.handleCallback()` on the callback page (see Redirect sign-in).
+- **Popup blocked:** catch `client.auth.popup_blocked` → `signInWithRedirect()` (see Popup-blocked fallback).
+
+No bundler? Import from CDN instead of installing:
+`https://unpkg.com/@open4id/sdk@0.1.3/dist/index.js`.
+`@open4id/sdk/ui` needs a browser DOM; the root entry also runs in Node 18+.
+
+## Concepts: dialog element vs headless client
+
+The SDK has two surfaces over the same protocol (OAuth Authorization Code
++ PKCE, same token endpoint, same session shape):
+
+- **Dialog element** (`<open4id-auth>`, `@open4id/sdk/ui`): the
+  recommended path used in the quick start. It renders every sign-in
+  method and calls the headless client for you — no provider or token
+  code on your side.
+- **Headless client** (`createAuthClient()`): use it directly for a
+  custom UI, a redirect-only flow, or a single popup call without the
+  dialog.
 
 `bootstrap()` always makes a request; `getBootstrap()` only returns the latest
-in-memory successful snapshot. `getConfig()` redacts the public key, and v1
-does not persist bootstrap data. Login, payments, and entitlements are typed
-placeholders that throw `sdk.not_implemented` until their API slices land.
+in-memory successful snapshot. For browser calls, omit `origin` to use
+`location.origin`. For Node or SSR, provide `origin` explicitly; the SDK sends
+a matching `Origin` request header.
 
-For browser calls, omit `origin` to use `location.origin`. For Node or SSR,
-provide `origin` explicitly; the SDK sends a matching `Origin` request header.
-
-## Install
-
-```sh
-npm install @open4id/sdk
-```
-
-```ts
-import { createAuthClient } from '@open4id/sdk';
-import { defineOpen4IDAuthElement } from '@open4id/sdk/ui';
-```
-
-The package ships prebuilt ESM in `dist/` with type declarations
-(`npm run build`, also runs on `prepack`). Local development against
-the sources: run `npm run build` after SDK edits, because linked
-consumers resolve the same `dist/` entrypoints.
-
-## Auth dialog (`@open4id/sdk/ui`)
+## Dialog element (`@open4id/sdk/ui`)
 
 `@open4id/sdk/ui` provides a Shadow-DOM Player Auth layout bound to a
 headless client. It renders sign-in, sign-up, forgot-password,
@@ -172,97 +199,16 @@ dialog.setLocale('vi'); // 'vi-VN' also works; anything else falls back to Engli
 Headless error keys (`client.auth.*`) are a stable contract and stay
 untranslated; only the rendered dialog text is localized.
 
-## Headless redirect auth (Authorization Code + PKCE)
+## Headless flows
 
-`createAuthClient` implements the first real player flow against the Core API
-OAuth endpoints. It stays memory-only: the PKCE/state transaction, tokens,
-and profile never leave the client instance except through its accessors.
+Call the client directly when you own the UI instead of `<open4id-auth>`.
+Every flow below ends in the same `AuthSession` (read it through
+`getSession()` / `getCachedUser()`, keep it alive with `ensureSession()`
+— see Sessions). Guest sign-in (`continueAsGuest`) and guest-to-email
+linking (`linkEmail`) follow the same single-use code exchange; the
+dialog wires them to its guest and link-email buttons.
 
-```ts
-import { createAuthClient } from '@open4id/sdk';
-
-const auth = createAuthClient({
-  appId: 'app_0123abcd',
-  environment: 'development',
-  publicSdkKey: 'sdk_pk_0123456789abcdef',
-  endpoint: 'http://localhost:10001/api',
-  redirectUri: 'http://localhost:5200/open4id/callback',
-});
-
-await auth.bootstrap({ platform: 'web', origin: 'http://localhost:5200' });
-await auth.signInWithRedirect(); // navigates to the hosted authorize page
-```
-
-After the hosted sign-in redirects back with `?code&state`:
-
-```ts
-const session = await auth.handleCallback(); // reads window.location by default
-auth.getSession(); // { accessToken, refreshToken, expiresAt, scope, userId }
-auth.isAuthenticated();
-await auth.getUser(); // { sub, email?, email_verified? } from userinfo
-await auth.refresh(); // rotates the refresh family
-await auth.signOut(); // revokes server-side, always clears local state
-const unsubscribe = auth.onAuthStateChanged((session, user) => {});
-```
-
-## Session refresh
-
-Access tokens live 15 minutes; the SDK never refreshes by itself. Prefer
-`ensureSession(minValidityMs)` (Keycloak-style `updateToken`): it returns
-the session untouched when it outlives the window and rotates once via
-`refresh()` otherwise (default window 30s, matching `isAuthenticated()`).
-Call it before important calls, when an API call fails with an expired
-token, or periodically while a long game session is open.
-Refresh-token families live 30 days idle and 90 days absolute; every
-refresh rotates to a new refresh token and the previous one dies
-immediately.
-
-```ts
-await auth.ensureSession(30_000); // no-op when still valid, one rotation otherwise
-```
-
-Concurrent `refresh()` calls are single-flight: they share one rotation
-instead of racing (a race would reuse a consumed token, which the server
-treats as theft, revokes the whole family, and clears the local
-session). Concurrent logins and refreshes are serialized to complete in
-start order (deterministic last-starter-wins) instead of interleaving
-exchanges and clobbering each other's session. A sign-out, account
-deletion, or reset that lands while a refresh or login is in flight wins:
-the late result is discarded instead of resurrecting the cleared
-session. Only idempotent reads retry once after a network flap or
-timeout; single-use exchanges (code, refresh, authorize, delete) never
-retry, because a replay can consume-or-replay server-side. A rejected
-refresh (`invalid_grant`, OAuth or envelope shape) always clears local
-state, so treat it as signed-out and send the player back to sign-in
-instead of retrying.
-
-## Session persistence (opt-in storage adapters)
-
-The client is memory-only by default and forgets the session on reload.
-Pass a session store to survive reloads; every established/rotated
-session is saved, and configuring the client picks it back up
-(malformed or foreign-app blobs are dropped). A restored session with
-an expired access token is still usable: `ensureSession()` rotates it
-when the refresh token is alive.
-
-```ts
-import { createAuthClient, SessionStorageSessionStore } from '@open4id/sdk';
-
-const auth = createAuthClient({
-  ...config,
-  storage: new SessionStorageSessionStore(`open4id.session.${appId}`),
-});
-```
-
-`SessionStorageSessionStore` survives reloads within one tab (safer on
-shared machines); `LocalStorageSessionStore` survives tabs and restarts.
-Tokens at rest are readable by page JavaScript, so XSS exposure is the
-trade-off: rotation plus the 90-day absolute family limit is the
-mitigation, and the key should always include the Application ID so
-games sharing an origin never read each other's sessions. A custom
-`SessionStore` (`load`/`save`/`clear`, never throwing) works the same
-way; sign-out, deletion, reset, and reuse-detection wipe the stored
-copy like the memory one.
+### Email/password, registration, and verification
 
 Prerequisites on the Application/environment: web enabled, an OAuth client ID
 issued (Publisher Authentication save generates `oc_web_...`), the exact
@@ -281,8 +227,6 @@ await auth.resendVerification('player@example.com'); // generic response
 await auth.verifyEmail('pat_...'); // single-use token from email or verify page
 ```
 
-## Headless dialog auth (email/password, no navigation)
-
 `signInWithPassword` powers first-party game dialogs such as
 `<open4id-auth>`: the credentials travel once to
 `POST /client/player_authorize`, which answers the same single-use,
@@ -297,7 +241,7 @@ Wrong credentials throw `SdkAuthError('client.player.invalid_credentials')`;
 an address past its verification grace throws
 `SdkAuthError('client.player.email_not_verified')` instead of a session.
 
-## Password reset
+### Password reset
 
 ```ts
 await auth.requestPasswordReset('player@example.com'); // generic response
@@ -312,13 +256,25 @@ unknown or expired token throws `SdkAuthError('client.auth.reset_invalid')`.
 The verification email links to the game origin's `/verify-email?token=`
 page (the Angular example implements it mirroring the Publisher activate
 page); the server-hosted `/api/client/verify_email` page remains as fallback.
-OAuth token errors map to typed SDK errors (`invalid_grant` →
-`SdkAuthError`, `invalid_request`/`unsupported_grant_type` →
-`SdkValidationError`, `temporarily_unavailable` → `SdkUnavailableError`).
-The legacy `client.login` namespace still throws `sdk.not_implemented`;
-`payments` and `entitlements` remain stubs.
 
-## Headless popup auth (Authorization Code + PKCE)
+### Redirect sign-in (full-page navigation)
+
+`signInWithRedirect` builds the authorization URL and navigates the game
+page to it via `location.assign` (it returns the URL it navigated to).
+On the callback page — the exact registered `redirectUri` — call
+`handleCallback()` to validate state and exchange the code for a session:
+
+```ts
+await auth.signInWithRedirect(); // leaves the game page
+// ... on the callback page:
+const session = await auth.handleCallback(); // defaults to the current page URL
+```
+
+Outside a browser (no `location.assign`) it throws
+`SdkValidationError('client.auth.redirect_unavailable')` instead of
+navigating.
+
+### Popup sign-in (hosted page, game stays open)
 
 `signInWithPopup` opens the same hosted authorize page in a popup window so
 the game page stays open. The registered redirect page must call
@@ -349,31 +305,35 @@ if (window.opener && !window.opener.closed) {
 No extra redirect URI registration is needed: the popup reuses the exact
 registered redirect URI, and the redirect page branches on `window.opener`.
 
-## Account deletion (Apple/Google compliance)
+#### Popup-blocked fallback (explicit, host-owned)
 
-`deleteAccount` deletes the current player whatever its type (native,
-guest, Google, GitHub, Apple). The access token proves ownership; the
-server revokes every session and token family, erases the profile, all
-linked identities, credentials, and action tokens, and answers 200. The
-SDK clears its in-memory session (also when the server reports the
-session is already invalid) and emits the signed-out state. Other
-failures keep the session and throw. Provider-side grants are
-additionally revoked best-effort using tokens captured at sign-in; any
-miss never blocks the local delete.
+The SDK opens the blank popup synchronously in the click call stack, but
+strict blockers can still refuse it. The SDK never falls back to a
+full-page redirect on its own: navigation wipes game state, and a
+user-closed or denied popup must not yank the player to another page.
+Fall back explicitly — and only on `popup_blocked`, which needs a working
+callback route to land on:
 
 ```ts
-if (window.confirm('Delete this player account permanently?')) {
-  await auth.deleteAccount();
+try {
+  await auth.signInWithPopup(); // or signInWithGooglePopup / GitHub / Apple
+} catch (error) {
+  if (error instanceof Error && error.message === 'client.auth.popup_blocked') {
+    await auth.signInWithRedirect();
+  } else {
+    throw error;
+  }
 }
 ```
 
-Calling without a session throws
-`SdkAuthError('client.auth.not_authenticated')` before any fetch. The
-`<open4id-auth>` delete-account mode wraps the same call as an explicit
-confirmation step and emits `open4id-account-deleted`; both examples
-open the dialog in that mode from their Delete account buttons.
+Host page checklist: serve over HTTPS, do not set
+`Cross-Origin-Opener-Policy: same-origin` (it severs `window.opener`
+from the callback page), register every callback/return URI (GitHub
+OAuth App, Apple Services ID, Google authorized JavaScript origins),
+and expect ad-blocked provider scripts as `system.service.down`, which
+is another case for the same redirect fallback.
 
-## Headless Google popup sign-in (no navigation, Publisher parity)
+### Google popup sign-in (no navigation)
 
 `signInWithGooglePopup` matches the Publisher Portal flow: the SDK lazily
 loads Google Identity Services in the host page, opens the Google account
@@ -401,7 +361,7 @@ round-trip needs the game origin registered as an authorized
 JavaScript origin in the Google Cloud Console; it first passed on
 2026-10-07 (GIS popup → game code → token pair → userinfo).
 
-## Headless GitHub popup sign-in (Publisher parity)
+### GitHub popup sign-in
 
 `signInWithGitHubPopup` matches the Publisher Portal flow: the SDK opens a
 popup at `github.com/login/oauth/authorize` with the application's public
@@ -438,7 +398,7 @@ OAuth App plus a human click; first passed on 2026-10-07 (Product Owner
 browser pass on the Angular example: dialog button → github.com popup →
 game callback → token pair → session).
 
-## Headless Apple popup sign-in (Publisher parity)
+### Apple popup sign-in
 
 `signInWithApplePopup` matches the Publisher Portal flow: the SDK lazily
 loads AppleID JS in the host page, opens the Apple popup with the
@@ -478,3 +438,116 @@ load (for example a content blocker, or outside a browser), it throws
 `SdkUnavailableError('system.service.down')`. The live round-trip needs
 the game Return URL registered in the Apple Services ID plus a human click;
 it remains unverified, so no browser pass is claimed.
+
+### Callback URI helpers
+
+`deriveGitHubCallbackUri`, `deriveAppleReturnUri`, and
+`deriveWebOrigin` expose the exact same rules the popup flows enforce,
+for Publisher dashboards that preview what to register at each
+provider console (no duplication, no drift):
+
+```ts
+import { deriveGitHubCallbackUri } from '@open4id/sdk';
+
+deriveGitHubCallbackUri({ redirectUri, environment });
+// → '<origin>/github-callback' (or the host override)
+```
+
+## Sessions
+
+### Refresh
+
+Access tokens live 15 minutes; the SDK never refreshes by itself. Prefer
+`ensureSession(minValidityMs)` (Keycloak-style `updateToken`): it returns
+the session untouched when it outlives the window and rotates once via
+`refresh()` otherwise (default window 30s, matching `isAuthenticated()`).
+Call it before important calls, when an API call fails with an expired
+token, or periodically while a long game session is open.
+Refresh-token families live 30 days idle and 90 days absolute; every
+refresh rotates to a new refresh token and the previous one dies
+immediately.
+
+```ts
+await auth.ensureSession(30_000); // no-op when still valid, one rotation otherwise
+```
+
+Concurrent `refresh()` calls are single-flight: they share one rotation
+instead of racing (a race would reuse a consumed token, which the server
+treats as theft, revokes the whole family, and clears the local
+session). Concurrent logins and refreshes are serialized to complete in
+start order (deterministic last-starter-wins) instead of interleaving
+exchanges and clobbering each other's session. A sign-out, account
+deletion, or reset that lands while a refresh or login is in flight wins:
+the late result is discarded instead of resurrecting the cleared
+session. Only idempotent reads retry once after a network flap or
+timeout; single-use exchanges (code, refresh, authorize, delete) never
+retry, because a replay can consume-or-replay server-side. A rejected
+refresh (`invalid_grant`, OAuth or envelope shape) always clears local
+state, so treat it as signed-out and send the player back to sign-in
+instead of retrying.
+
+### Persistence (opt-in storage adapters)
+
+The client is memory-only by default (`MemorySessionStore`) and forgets
+the session on reload — it never touches `localStorage` unless you ask
+it to. Pass a session store to survive reloads; every established/rotated
+session is saved, and configuring the client picks it back up
+(malformed or foreign-app blobs are dropped). A restored session with
+an expired access token is still usable: `ensureSession()` rotates it
+when the refresh token is alive.
+
+| Store | Survives | Default? | Note |
+|---|---|---|---|
+| `MemorySessionStore` | Nothing (lost on reload) | Yes | Safest; re-login every load |
+| `SessionStorageSessionStore` | Reloads within one tab | No | Recommended; safer on shared machines |
+| `LocalStorageSessionStore` | Tabs and browser restarts | No | Most convenient, highest XSS exposure |
+
+```ts
+import { createAuthClient, SessionStorageSessionStore } from '@open4id/sdk';
+
+const auth = createAuthClient({
+  ...config,
+  storage: new SessionStorageSessionStore(`open4id.session.${appId}`),
+});
+```
+
+Tokens at rest are readable by page JavaScript, so XSS exposure is the
+trade-off behind the table above: rotation plus the 90-day absolute family limit is the
+mitigation, and the key should always include the Application ID so
+games sharing an origin never read each other's sessions. A custom
+`SessionStore` (`load`/`save`/`clear`, never throwing) works the same
+way; sign-out, deletion, reset, and reuse-detection wipe the stored
+copy like the memory one.
+
+## Account deletion (Apple/Google compliance)
+
+`deleteAccount` deletes the current player whatever its type (native,
+guest, Google, GitHub, Apple). The access token proves ownership; the
+server revokes every session and token family, erases the profile, all
+linked identities, credentials, and action tokens, and answers 200. The
+SDK clears its in-memory session (also when the server reports the
+session is already invalid) and emits the signed-out state. Other
+failures keep the session and throw. Provider-side grants are
+additionally revoked best-effort using tokens captured at sign-in; any
+miss never blocks the local delete.
+
+```ts
+if (window.confirm('Delete this player account permanently?')) {
+  await auth.deleteAccount();
+}
+```
+
+Calling without a session throws
+`SdkAuthError('client.auth.not_authenticated')` before any fetch. The
+`<open4id-auth>` delete-account mode wraps the same call as an explicit
+confirmation step and emits `open4id-account-deleted`; both examples
+open the dialog in that mode from their Delete account buttons.
+
+## Errors
+
+All failures throw typed `SdkError` subclasses keyed by stable string
+codes. OAuth token errors map to typed SDK errors (`invalid_grant` →
+`SdkAuthError`, `invalid_request`/`unsupported_grant_type` →
+`SdkValidationError`, `temporarily_unavailable` → `SdkUnavailableError`).
+The legacy `client.login` namespace still throws `sdk.not_implemented`;
+`payments` and `entitlements` remain stubs.
