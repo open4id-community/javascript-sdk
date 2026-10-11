@@ -8,10 +8,6 @@ OAuth Authorization Code + PKCE, social provider popups (Google, GitHub,
 Apple), guest sessions, and a Shadow-DOM `<open4id-auth>` element. No
 runtime dependencies.
 
-> This repo is a subtree split of the Open4ID monorepo
-> (`sdks/javascript`). The Open4ID Core API (the server this SDK talks
-> to) lives there. To run your own backend, start from the monorepo.
-
 ## Quick start: the dialog element in 5 steps
 
 > Recommended path: a drop-in `<open4id-auth>` dialog that handles
@@ -40,7 +36,7 @@ const auth = createAuthClient({
   appId: 'app_0123abcd',               // from your Open4ID application
   environment: 'production',           // development | sandbox | production
   publicSdkKey: 'sdk_pk_...',         // public key only — never the secret key
-  endpoint: 'https://id.open4id.example/api',
+  endpoint: 'https://id.open4id.com/api', // optional — this production URL is the default; development uses its own URL
   redirectUri: 'https://game.example.com/open4id/callback', // exact registered URI
   // Opt-in: remember login across reloads (default is memory-only, lost on reload).
   // storage: new SessionStorageSessionStore('open4id.session.app_0123abcd'),
@@ -101,7 +97,7 @@ await auth.deleteAccount();  // permanent; needs a signed-in session
 - **Popup blocked:** catch `client.auth.popup_blocked` → `signInWithRedirect()` (see Popup-blocked fallback).
 
 No bundler? Import from CDN instead of installing:
-`https://unpkg.com/@open4id/sdk@0.1.3/dist/index.js`.
+`https://unpkg.com/@open4id/sdk@0.2.0/dist/index.js`.
 `@open4id/sdk/ui` needs a browser DOM; the root entry also runs in Node 18+.
 
 ## Concepts: dialog element vs headless client
@@ -518,6 +514,27 @@ games sharing an origin never read each other's sessions. A custom
 `SessionStore` (`load`/`save`/`clear`, never throwing) works the same
 way; sign-out, deletion, reset, and reuse-detection wipe the stored
 copy like the memory one.
+
+### Publisher server callback (optional login receipt)
+
+Publishers with their own backend can tick the `server_callback` checkbox
+in the Authentication configuration and save a URL. After every fresh
+sign-in the SDK POSTs one login receipt there:
+
+```json
+{ "token_type": "Bearer", "access_token": "oa_...", "expires_in": 900,
+  "scope": "openid profile email", "user": { "sub": "...", "email": "..." } }
+```
+
+Rules: URL presence alone never triggers it (`enabled` must be `true`);
+refresh rotation never re-notifies; a delivery failure never invalidates
+the session (subscribe with `onServerCallbackError`, or replay manually
+with `await auth.notifyServer()`). The receipt never carries a refresh
+token, verifier, or code. The Publisher backend verifies the access token
+with `POST /api/server/player_verify_token` (server-to-server namespace,
+`sdk_sk_...` auth alone — no public key needed, app-bound `{active, ...}`
+answer) before trusting it, and owns CORS on its own URL. Publishers
+without a backend ignore this entirely: the default flow is unchanged.
 
 ## Account deletion (Apple/Google compliance)
 
