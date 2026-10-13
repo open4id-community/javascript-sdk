@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Open4ID minimal web sample</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 42rem; margin: 2rem auto; padding: 0 1rem; }
+    fieldset { margin: 1rem 0; }
+    label { display: block; margin: 0.4rem 0; }
+    input, select { width: 100%; box-sizing: border-box; }
+    button { margin: 0.2rem 0.4rem 0.2rem 0; }
+    pre { background: #f4f6fa; padding: 0.8rem; overflow-x: auto; }
+  </style>
+  <script type="importmap">
+    { "imports": { "@open4id/sdk": "https://esm.sh/@open4id/sdk@0.3.0" } }
+  </script>
+</head>
+<body>
+  <h1>Open4ID minimal web sample</h1>
+  <p>Headless <code>@open4id/sdk</code> usage in one file: no framework, no
+  bundler. Fill in your application values, then run a full
+  register → sign-in → refresh → sign-out loop.</p>
+
+  <fieldset>
+    <legend>Application</legend>
+    <label>App ID <input id="appId" value="app_4a17c6406abaefdf0d9a705e7175b37c" autocomplete="off"></label>
+    <label>Environment
+      <select id="environment">
+        <option value="development" selected>development</option>
+        <option value="sandbox">sandbox</option>
+        <option value="production">production</option>
+      </select>
+    </label>
+    <label>Public SDK key <input id="publicSdkKey" value="sdk_pk_24cf6cc954d16591812fd1b9953ef053f5133b13f7cec9ae" autocomplete="off"></label>
+    <label>Endpoint (empty = SDK production default)
+      <input id="endpoint" value="https://id.open4id.com/api" autocomplete="off"></label>
+    <div>
+      <button id="bootstrap" type="button">1. Bootstrap</button>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Player</legend>
+    <label>Email <input id="email" type="email" placeholder="you@example.com" autocomplete="email"></label>
+    <label>Password <input id="password" type="password" placeholder="at least 8 characters" autocomplete="current-password"></label>
+    <div>
+      <button id="register" type="button">2a. Register</button>
+      <button id="signin" type="button">2b. Sign in</button>
+      <button id="guest" type="button">2c. Continue as guest</button>
+      <button id="link" type="button">2d. Link guest email</button>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Session</legend>
+    <div>
+      <button id="refresh" type="button">3. Refresh (ensureSession)</button>
+      <button id="signout" type="button">4. Sign out</button>
+      <button id="delete" type="button">5. Delete account</button>
+    </div>
+  </fieldset>
+
+  <h2>Status</h2>
+  <pre id="out">Fill in the application values and press “1. Bootstrap”.</pre>
+
+  <script type="module">
+    import { createAuthClient } from '@open4id/sdk';
+
+    const $ = (id) => document.getElementById(id);
+    const out = $('out');
+    let auth = null;
+
+    const show = (label, value) => {
+      out.textContent = `${label}\n` + JSON.stringify(value, null, 2);
+    };
+    const fail = (error) => {
+      // SDK errors carry stable keys in `message` — branch on those, never
+      // on localized text. Secrets never appear here.
+      out.textContent = `error: ${error instanceof Error ? error.message : error}`;
+    };
+
+    function configuredClient() {
+      const appId = $('appId').value.trim();
+      const environment = $('environment').value;
+      const publicSdkKey = $('publicSdkKey').value.trim();
+      const endpoint = $('endpoint').value.trim();
+      auth = createAuthClient({
+        appId,
+        environment,
+        publicSdkKey,
+        // Every authorization code is bound to this exact URI: it is the
+        // same redirect URI the Angular example sends, already registered
+        // for the dev app, so no dashboard change is needed. Nothing in
+        // this sample navigates to it (dialog-less flows stay in-page);
+        // it is purely the code binding the server checks at exchange.
+        redirectUri: `${window.location.origin}/open4id/callback`,
+        ...(endpoint ? { endpoint } : {}),
+      });
+      return auth;
+    }
+
+    $('bootstrap').onclick = async () => {
+      try {
+        const bootstrap = await configuredClient().bootstrap({ platform: 'web' });
+        show('bootstrap ok (public discovery only):', bootstrap);
+      } catch (error) { fail(error); }
+    };
+
+    $('register').onclick = async () => {
+      try {
+        await configuredClient().bootstrap({ platform: 'web' });
+        await auth.register($('email').value.trim(), $('password').value);
+        show('registered. Verification email sent (24h grace) — now sign in.', {});
+      } catch (error) { fail(error); }
+    };
+
+    $('signin').onclick = async () => {
+      try {
+        await configuredClient().bootstrap({ platform: 'web' });
+        const session = await auth.signInWithPassword(
+          $('email').value.trim(), $('password').value);
+        show('signed in:', { ...session, user: auth.getCachedUser() });
+      } catch (error) { fail(error); }
+    };
+
+    $('guest').onclick = async () => {
+      try {
+        await configuredClient().bootstrap({ platform: 'web' });
+        const session = await auth.continueAsGuest();
+        show('guest session (no email):', { ...session, user: auth.getCachedUser() });
+      } catch (error) { fail(error); }
+    };
+
+    $('link').onclick = async () => {
+      try {
+        if (!auth) throw new Error('continue as guest first');
+        // Links the current guest session to a real address (sends the
+        // 24h verification email, revokes guest sessions) and signs in
+        // natively. Fails when the session is not a guest session or the
+        // address is taken.
+        const session = await auth.linkEmail($('email').value.trim(), $('password').value);
+        show('guest linked (signed in natively):', { ...session, user: auth.getCachedUser() });
+      } catch (error) { fail(error); }
+    };
+
+    // The form does not survive a page reload, so stash the public
+    // configuration (never secrets — there are none here) and restore
+    // it on load.
+    const saved = JSON.parse(sessionStorage.getItem('open4id-minimal') ?? '{}');
+    for (const [id, key] of [['appId', 'appId'], ['environment', 'environment'], ['publicSdkKey', 'publicSdkKey'], ['endpoint', 'endpoint']]) {
+      if (typeof saved[key] === 'string' && saved[key]) $(id).value = saved[key];
+    }
+    function stash() {
+      sessionStorage.setItem('open4id-minimal', JSON.stringify({
+        appId: $('appId').value.trim(),
+        environment: $('environment').value,
+        publicSdkKey: $('publicSdkKey').value.trim(),
+        endpoint: $('endpoint').value.trim(),
+      }));
+    }
+    for (const button of ['bootstrap', 'register', 'signin', 'guest', 'link', 'refresh', 'signout', 'delete']) {
+      $(button).addEventListener('click', stash);
+    }
+
+    $('refresh').onclick = async () => {
+      try {
+        if (!auth) throw new Error('bootstrap first');
+        const session = await auth.ensureSession();
+        show('session ensured (rotated only when near expiry):', session);
+      } catch (error) { fail(error); }
+    };
+
+    $('signout').onclick = async () => {
+      try {
+        if (!auth) throw new Error('nothing to sign out');
+        await auth.signOut();
+        show('signed out. Local session cleared.', {});
+      } catch (error) { fail(error); }
+    };
+
+    $('delete').onclick = async () => {
+      try {
+        if (!auth) throw new Error('sign in first');
+        // Permanent: wipes profile, sessions, and linked identities for
+        // this application and revokes provider grants where possible.
+        if (!window.confirm('Permanently delete this player account?')) return;
+        await auth.deleteAccount();
+        show('account deleted. Local session cleared.', {});
+      } catch (error) { fail(error); }
+    };
+
+  </script>
+</body>
+</html>

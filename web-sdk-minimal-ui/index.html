@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Open4ID minimal login-UI sample</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 42rem; margin: 2rem auto; padding: 0 1rem; }
+    fieldset { margin: 1rem 0; }
+    label { display: block; margin: 0.4rem 0; }
+    input, select { width: 100%; box-sizing: border-box; }
+    button { margin: 0.2rem 0.4rem 0.2rem 0; }
+    pre { background: #f4f6fa; padding: 0.8rem; overflow-x: auto; }
+    dialog.login-native { border: none; padding: 0; background: transparent; }
+    dialog.login-native::backdrop { background: rgba(0, 0, 0, 0.45); }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "@open4id/sdk": "https://esm.sh/@open4id/sdk@0.3.0",
+        "@open4id/sdk/ui": "https://esm.sh/@open4id/sdk@0.3.0/ui"
+      }
+    }
+  </script>
+</head>
+<body>
+  <h1>Open4ID minimal login-UI sample</h1>
+  <p>The same backend as the headless sample, but the whole login UI is
+  the SDK's <code>&lt;open4id-auth&gt;</code> dialog element: sign-in,
+  sign-up, forgot-password, guest, link-email, delete-account, and the
+  Google/Apple popups come free. This page only creates the headless
+  client, bootstraps it, binds both to the element, and reacts to its
+  three events.</p>
+
+  <fieldset>
+    <legend>Application</legend>
+    <label>App ID <input id="appId" value="app_4a17c6406abaefdf0d9a705e7175b37c" autocomplete="off"></label>
+    <label>Environment
+      <select id="environment">
+        <option value="development" selected>development</option>
+        <option value="sandbox">sandbox</option>
+        <option value="production">production</option>
+      </select>
+    </label>
+    <label>Public SDK key <input id="publicSdkKey" value="sdk_pk_24cf6cc954d16591812fd1b9953ef053f5133b13f7cec9ae" autocomplete="off"></label>
+    <label>Endpoint <input id="endpoint" value="https://id.open4id.com/api" autocomplete="off"></label>
+    <div>
+      <button id="openLogin" type="button">Open login dialog</button>
+      <button id="refresh" type="button">Refresh session</button>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Account (needs a signed-in session — the dialog remembers it)</legend>
+    <div>
+      <button id="account" type="button">Account (sign out)</button>
+      <button id="linkMode" type="button">Link email</button>
+      <button id="passwordMode" type="button">Change password</button>
+      <button id="deleteMode" type="button">Delete account</button>
+      <button id="signout" type="button">Log out now</button>
+    </div>
+  </fieldset>
+
+  <h2>Status</h2>
+  <pre id="out">Press “Open login dialog”.</pre>
+
+  <!-- Bare native dialog around the SDK element only: no host chrome. -->
+  <dialog id="loginNative" class="login-native">
+    <open4id-auth id="loginDialog"></open4id-auth>
+  </dialog>
+
+  <script type="module">
+    import { createAuthClient } from '@open4id/sdk';
+    import { defineOpen4IDAuthElement } from '@open4id/sdk/ui';
+
+    defineOpen4IDAuthElement();
+
+    const $ = (id) => document.getElementById(id);
+    const out = $('out');
+    const dialog = $('loginNative');
+    const element = $('loginDialog');
+    let auth = null;
+    let lastConfigKey = '';
+
+    const show = (label, value) => {
+      out.textContent = `${label}\n` + JSON.stringify(value, null, 2);
+    };
+
+    // The form does not survive a page reload, so stash the public
+    // configuration (never secrets — there are none here) and restore
+    // it on load.
+    const saved = JSON.parse(sessionStorage.getItem('open4id-minimal-ui') ?? '{}');
+    for (const [id, key] of [['appId', 'appId'], ['environment', 'environment'], ['publicSdkKey', 'publicSdkKey'], ['endpoint', 'endpoint']]) {
+      if (typeof saved[key] === 'string' && saved[key]) $(id).value = saved[key];
+    }
+    function stash() {
+      sessionStorage.setItem('open4id-minimal-ui', JSON.stringify({
+        appId: $('appId').value.trim(),
+        environment: $('environment').value,
+        publicSdkKey: $('publicSdkKey').value.trim(),
+        endpoint: $('endpoint').value.trim(),
+      }));
+    }
+
+    async function ensureReady() {
+      // Reuse the client while the config is unchanged: recreating it
+      // would wipe the in-memory session the dialog remembers.
+      const key = [$('appId').value.trim(), $('environment').value,
+        $('publicSdkKey').value.trim(), $('endpoint').value.trim()].join('|');
+      if (!auth || key !== lastConfigKey) {
+        auth = createAuthClient({
+          appId: $('appId').value.trim(),
+          environment: $('environment').value,
+          publicSdkKey: $('publicSdkKey').value.trim(),
+          endpoint: $('endpoint').value.trim() || undefined,
+          // Bound to every code the dialog flows issue; register the
+          // same string (the Angular example's value — no dashboard
+          // change needed). Nothing navigates to it here.
+          redirectUri: `${window.location.origin}/open4id/callback`,
+        });
+        element.setAuthClient(auth);
+        lastConfigKey = key;
+      }
+      await auth.bootstrap({ platform: 'web' });
+      // setBootstrap also preloads the Google/Apple scripts, so the
+      // dialog's provider buttons can pop synchronously (Safari rule).
+      element.setBootstrap(auth.getBootstrap());
+    }
+
+    element.addEventListener('open4id-signed-in', () => {
+      dialog.close();
+      show('signed in (via dialog):', { ...auth.getSession(), user: auth.getCachedUser() });
+    });
+    element.addEventListener('open4id-signed-out', () => {
+      dialog.close();
+      show('signed out. Local session cleared.', {});
+    });
+    element.addEventListener('open4id-account-deleted', () => {
+      dialog.close();
+      show('account deleted. Local session cleared.', {});
+    });
+
+    $('openLogin').onclick = async () => {
+      try {
+        stash();
+        await ensureReady();
+        element.setMode('sign-in');
+        if (!dialog.open) dialog.showModal();
+      } catch (error) {
+        out.textContent = `error: ${error instanceof Error ? error.message : error}`;
+      }
+    };
+
+    // Task shortcuts: the bound client still holds the session, so the
+    // dialog opens straight into each task view (no re-login).
+    async function openMode(mode) {
+      try {
+        stash();
+        await ensureReady();
+        element.setMode(mode);
+        if (!dialog.open) dialog.showModal();
+      } catch (error) {
+        out.textContent = `error: ${error instanceof Error ? error.message : error}`;
+      }
+    }
+
+    // 'sign-in' is session-aware: with a live session it renders the
+    // account view (identity, sign out, delete entry) instead of the
+    // login form.
+    $('account').onclick = () => openMode('sign-in');
+    $('linkMode').onclick = () => openMode('link-email');
+    $('passwordMode').onclick = () => openMode('forgot-password');
+    $('deleteMode').onclick = () => openMode('delete-account');
+
+    $('refresh').onclick = async () => {
+      try {
+        if (!auth) throw new Error('open the login dialog first');
+        show('session ensured:', await auth.ensureSession());
+      } catch (error) {
+        out.textContent = `error: ${error instanceof Error ? error.message : error}`;
+      }
+    };
+
+    $('signout').onclick = async () => {
+      try {
+        if (!auth) throw new Error('nothing to sign out');
+        await auth.signOut();
+        element.setBootstrap(auth.getBootstrap());
+        show('signed out. Local session cleared.', {});
+      } catch (error) {
+        out.textContent = `error: ${error instanceof Error ? error.message : error}`;
+      }
+    };
+  </script>
+</body>
+</html>

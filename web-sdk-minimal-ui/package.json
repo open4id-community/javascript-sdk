@@ -1,0 +1,10 @@
+{
+  "name": "open4id-web-sdk-minimal-ui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Minimal single-file @open4id/sdk login-dialog sample (no framework, no build).",
+  "scripts": {
+    "start": "npx -y serve@14 --listen 5200 --no-clipboard ."
+  },
+  "license": "MIT"
+}
