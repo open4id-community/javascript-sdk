@@ -13,7 +13,7 @@
     pre { background: #f4f6fa; padding: 0.8rem; overflow-x: auto; }
   </style>
   <script type="importmap">
-    { "imports": { "@open4id/sdk": "https://esm.sh/@open4id/sdk@0.3.0" } }
+    { "imports": { "@open4id/sdk": "https://esm.sh/@open4id/sdk@0.3.1" } }
   </script>
 </head>
 <body>
@@ -53,6 +53,15 @@
   </fieldset>
 
   <fieldset>
+    <legend>Providers (popup, no page navigation)</legend>
+    <div>
+      <button id="google" type="button">2e. Sign in with Google</button>
+      <button id="github" type="button">2f. Sign in with GitHub</button>
+      <button id="apple" type="button">2g. Sign in with Apple</button>
+    </div>
+  </fieldset>
+
+  <fieldset>
     <legend>Session</legend>
     <div>
       <button id="refresh" type="button">3. Refresh (ensureSession)</button>
@@ -65,11 +74,12 @@
   <pre id="out">Fill in the application values and press “1. Bootstrap”.</pre>
 
   <script type="module">
-    import { createAuthClient } from '@open4id/sdk';
+    import { createAuthClient, preloadApplePopup, preloadGooglePopup } from '@open4id/sdk';
 
     const $ = (id) => document.getElementById(id);
     const out = $('out');
     let auth = null;
+    let lastConfigKey = '';
 
     const show = (label, value) => {
       out.textContent = `${label}\n` + JSON.stringify(value, null, 2);
@@ -85,6 +95,11 @@
       const environment = $('environment').value;
       const publicSdkKey = $('publicSdkKey').value.trim();
       const endpoint = $('endpoint').value.trim();
+      // Reuse the client while the config is unchanged: recreating it
+      // would wipe the in-memory session mid-loop (e.g. Bootstrap after
+      // Sign in). Same pattern as the minimal-ui sample.
+      const key = [appId, environment, publicSdkKey, endpoint].join('|');
+      if (auth && key === lastConfigKey) return auth;
       auth = createAuthClient({
         appId,
         environment,
@@ -97,12 +112,19 @@
         redirectUri: `${window.location.origin}/open4id/callback`,
         ...(endpoint ? { endpoint } : {}),
       });
+      lastConfigKey = key;
       return auth;
     }
 
     $('bootstrap').onclick = async () => {
       try {
         const bootstrap = await configuredClient().bootstrap({ platform: 'web' });
+        // Warm the Google/Apple scripts while there is no popup yet, so
+        // the provider buttons below can pop synchronously inside the
+        // click call stack (strict blockers like Safari refuse popups
+        // opened after an await).
+        preloadGooglePopup();
+        preloadApplePopup();
         show('bootstrap ok (public discovery only):', bootstrap);
       } catch (error) { fail(error); }
     };
@@ -144,6 +166,26 @@
       } catch (error) { fail(error); }
     };
 
+    // Provider popups: headless equivalents of the dialog's provider
+    // buttons. Google uses a GIS popup (no navigation). GitHub opens
+    // github.com and returns through github-callback.html in this folder
+    // (must be registered in the GitHub OAuth App settings). Apple uses
+    // an AppleID popup bound to the redirect-URI origin (must be
+    // registered as the Return URL in the Apple Services ID settings).
+    // All three post the short-lived provider code to the server, which
+    // answers the same PKCE-bound authorization code as the native flows.
+    async function providerSignIn(method, label) {
+      try {
+        await configuredClient().bootstrap({ platform: 'web' });
+        const session = await auth[method]();
+        show(label, { ...session, user: auth.getCachedUser() });
+      } catch (error) { fail(error); }
+    }
+
+    $('google').onclick = () => providerSignIn('signInWithGooglePopup', 'signed in with Google:');
+    $('github').onclick = () => providerSignIn('signInWithGitHubPopup', 'signed in with GitHub:');
+    $('apple').onclick = () => providerSignIn('signInWithApplePopup', 'signed in with Apple:');
+
     // The form does not survive a page reload, so stash the public
     // configuration (never secrets — there are none here) and restore
     // it on load.
@@ -159,7 +201,7 @@
         endpoint: $('endpoint').value.trim(),
       }));
     }
-    for (const button of ['bootstrap', 'register', 'signin', 'guest', 'link', 'refresh', 'signout', 'delete']) {
+    for (const button of ['bootstrap', 'register', 'signin', 'guest', 'link', 'google', 'github', 'apple', 'refresh', 'signout', 'delete']) {
       $(button).addEventListener('click', stash);
     }
 

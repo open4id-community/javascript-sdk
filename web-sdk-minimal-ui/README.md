@@ -39,9 +39,9 @@ npm start
 - Sessions live in SDK instance memory only; the dialog's provider
   buttons need no extra code (Google GIS / AppleID popups, Safari-safe
   via the element's script preload).
-- GitHub popup needs a game callback page at `<origin>/github-callback`
-  (or the `github-callback-uri` attribute pointing at one): this sample
-  serves none, so use the vanilla/Angular example for GitHub popup, or
-  email/guest here.
+- GitHub popup is served by `github-callback.html` (`<origin>/github-callback`,
+  registered in the GitHub OAuth App settings): it forwards the provider
+  code to the opener with `handleGitHubPopupCallback()`, like the
+  vanilla/Angular examples.
 - Never put `sdk_sk_...`, provider secrets, or tokens in the page. The
   only credential here is the public `sdk_pk_...` key.
