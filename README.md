@@ -91,14 +91,11 @@ await auth.signOut();        // revoke server-side, clear local state
 await auth.deleteAccount();  // permanent; needs a signed-in session
 ```
 
-### Going further (one line each)
+### Notice:
 - **Remember login across reloads:** pass `storage: new SessionStorageSessionStore('open4id.session.<appId>')` (see Sessions).
-- **Full-page redirect instead of dialog:** `await auth.signInWithRedirect()`, then `await auth.handleCallback()` on the callback page (see Redirect sign-in).
-- **Popup blocked:** catch `client.auth.popup_blocked` → `signInWithRedirect()` (see Popup-blocked fallback).
 
-No bundler? Import from CDN instead of installing:
-`https://unpkg.com/@open4id/sdk@0.2.0/dist/index.js`.
-`@open4id/sdk/ui` needs a browser DOM; the root entry also runs in Node 18+.
+Direct using? Import from CDN instead of installing:
+`https://unpkg.com/@open4id/sdk@0.3.1/dist/index.js`.
 
 ## Concepts: dialog element vs headless client
 
@@ -125,7 +122,11 @@ headless client. It renders sign-in, sign-up, forgot-password,
 link-email, and delete-account modes
 from safe bootstrap readiness, and every protocol operation runs in the
 bound headless client: credentials and tokens never leave the client
-except through its accessors.
+except through its accessors. It shows only the login methods the
+Publisher enabled for the environment (normal email/password, guest,
+Google, GitHub, Apple) — toggled in the Publisher Portal under App
+Settings → SDK & API keys → Login methods — and hides the rest
+automatically after the next bootstrap.
 
 ```ts
 import { defineOpen4IDAuthElement } from '@open4id/sdk/ui';
@@ -173,7 +174,9 @@ The delete-account mode (`mode="delete-account"` or
 `setMode('delete-account')`) is an explicit confirmation step for the
 signed-in player: it calls headless `deleteAccount()` and emits
 `open4id-account-deleted` on success so the host can close its dialog
-and clear displayed state. Listen for it next to `open4id-signed-in`:
+and clear displayed state. The entry is shown only while the publisher's
+delete-button toggle stays enabled (SDK keys page); a disabled toggle
+hides it and the endpoint answers `403`. Listen for it next to `open4id-signed-in`:
 
 ```ts
 login?.addEventListener('open4id-account-deleted', () => {
@@ -192,6 +195,23 @@ language with the `lang` attribute or `setLocale()`:
 dialog.setLocale('vi'); // 'vi-VN' also works; anything else falls back to English
 ```
 
+The dialog brand names the application instead of a generic product
+mark: it reads the bootstrap `displayName` (the application's configured
+name, served by Core API bootstrap v2) and renders it with its initial
+as the mark, including in the sign-up intro. Override it explicitly when
+the game knows its own name without waiting for bootstrap:
+
+```html
+<open4id-auth app-name="My Game"></open4id-auth>
+```
+
+```ts
+dialog.setAppName('My Game'); // setAppName(null) clears the override
+```
+
+Without an override or a configured name, the dialog keeps the generic
+Open4ID brand.
+
 Headless error keys (`client.auth.*`) are a stable contract and stay
 untranslated; only the rendered dialog text is localized.
 
@@ -209,7 +229,7 @@ dialog wires them to its guest and link-email buttons.
 Prerequisites on the Application/environment: web enabled, an OAuth client ID
 issued (Publisher Authentication save generates `oc_web_...`), the exact
 redirect URI and web origin registered, and email/password login enabled.
-Native passwords require at least 12 characters; registration answers with a
+Native passwords require at least 8 characters; registration answers with a
 generic accepted response even for invalid input (anti-enumeration), so a
 short password only surfaces later as a sign-in failure.
 
@@ -237,217 +257,53 @@ Wrong credentials throw `SdkAuthError('client.player.invalid_credentials')`;
 an address past its verification grace throws
 `SdkAuthError('client.player.email_not_verified')` instead of a session.
 
-### Password reset
-
-```ts
-await auth.requestPasswordReset('player@example.com'); // generic response
-await auth.resetPassword('pat_...', 'a-brand-new-password'); // single-use 30-minute token
-```
-
-The request always answers success-shaped so responses never reveal
-registration state. Resetting consumes the token, sets the bcrypt password
-(minimum 12 characters), and revokes all sessions for the player; an
-unknown or expired token throws `SdkAuthError('client.auth.reset_invalid')`.
-
-The verification email links to the game origin's `/verify-email?token=`
-page (the Angular example implements it mirroring the Publisher activate
-page); the server-hosted `/api/client/verify_email` page remains as fallback.
-
-### Redirect sign-in (full-page navigation)
-
-`signInWithRedirect` builds the authorization URL and navigates the game
-page to it via `location.assign` (it returns the URL it navigated to).
-On the callback page — the exact registered `redirectUri` — call
-`handleCallback()` to validate state and exchange the code for a session:
-
-```ts
-await auth.signInWithRedirect(); // leaves the game page
-// ... on the callback page:
-const session = await auth.handleCallback(); // defaults to the current page URL
-```
-
-Outside a browser (no `location.assign`) it throws
-`SdkValidationError('client.auth.redirect_unavailable')` instead of
-navigating.
-
-### Popup sign-in (hosted page, game stays open)
-
-`signInWithPopup` opens the same hosted authorize page in a popup window so
-the game page stays open. The registered redirect page must call
-`handlePopupCallback()` when it runs inside the popup: it forwards
-`{code, state}` to the opener via `postMessage` and closes itself. The opener
-validates the message origin against the redirect-URI origin, the message
-source against the opened popup, and the state against the stored PKCE
-transaction before exchanging the code. A blocked popup throws
-`client.auth.popup_blocked`, a user-closed popup throws
-`client.auth.popup_closed`, and an expired wait throws
-`client.auth.popup_timeout`.
-
-```ts
-const session = await auth.signInWithPopup(); // resolves after the popup callback
-```
-
-```ts
-// Inside the redirect page (for example /open4id/callback):
-import { handlePopupCallback } from '@open4id/sdk';
-
-if (window.opener && !window.opener.closed) {
-  handlePopupCallback(); // forwards code/state and closes the popup
-} else {
-  await auth.handleCallback(); // full-page redirect exchange
-}
-```
-
-No extra redirect URI registration is needed: the popup reuses the exact
-registered redirect URI, and the redirect page branches on `window.opener`.
-
-#### Popup-blocked fallback (explicit, host-owned)
-
-The SDK opens the blank popup synchronously in the click call stack, but
-strict blockers can still refuse it. The SDK never falls back to a
-full-page redirect on its own: navigation wipes game state, and a
-user-closed or denied popup must not yank the player to another page.
-Fall back explicitly — and only on `popup_blocked`, which needs a working
-callback route to land on:
-
-```ts
-try {
-  await auth.signInWithPopup(); // or signInWithGooglePopup / GitHub / Apple
-} catch (error) {
-  if (error instanceof Error && error.message === 'client.auth.popup_blocked') {
-    await auth.signInWithRedirect();
-  } else {
-    throw error;
-  }
-}
-```
-
-Host page checklist: serve over HTTPS, do not set
-`Cross-Origin-Opener-Policy: same-origin` (it severs `window.opener`
-from the callback page), register every callback/return URI (GitHub
-OAuth App, Apple Services ID, Google authorized JavaScript origins),
-and expect ad-blocked provider scripts as `system.service.down`, which
-is another case for the same redirect fallback.
-
-### Google popup sign-in (no navigation)
-
-`signInWithGooglePopup` matches the Publisher Portal flow: the SDK lazily
-loads Google Identity Services in the host page, opens the Google account
-chooser in a popup with the application's public client ID, and posts the
-short-lived Google code to `POST /client/player_google_authorize`. The
-server exchanges it with the Vault-backed secret, resolves the player
-(existing/linked/created, never merged; unverified provider email fails
-closed), and answers the same single-use PKCE-bound code as usual, which
-the SDK exchanges at `/token`. Nothing navigates, so the in-memory PKCE
-transaction survives; the secret never leaves the server.
+### Social popups
 
 ```ts
 const session = await auth.signInWithGooglePopup();
 ```
 
-A disabled provider throws
-`SdkValidationError('client.auth.provider_unavailable')` before any popup.
-A dismissed popup throws `SdkAuthError('client.auth.popup_closed')`, a
-denial without a code throws `SdkAuthError('client.auth.access_denied')`,
-and an expired wait throws `SdkAuthError('client.auth.popup_timeout')`.
-When the Google script cannot load (for example an ad-blocker, or outside
-a browser), it throws `SdkUnavailableError('system.service.down')`, which
-the `<open4id-auth>` dialog reports as a sign-in failure. The live
-round-trip needs the game origin registered as an authorized
-JavaScript origin in the Google Cloud Console; it first passed on
-2026-10-07 (GIS popup → game code → token pair → userinfo).
-
-### GitHub popup sign-in
-
-`signInWithGitHubPopup` matches the Publisher Portal flow: the SDK opens a
-popup at `github.com/login/oauth/authorize` with the application's public
-client ID and a game callback URI, the callback page
-(`handleGitHubPopupCallback`) forwards the short-lived GitHub code to the
-opener via `postMessage`, and the SDK posts it to
-`POST /client/player_github_authorize` with the exact callback URI. The
-server exchanges it with the Vault-backed secret, resolves the primary
-verified email and the player (existing/linked/created, never merged;
-missing or unverified email fails closed), and answers the same
-single-use PKCE-bound code as usual, which the SDK exchanges at `/token`.
-Nothing navigates in the host page, so the in-memory PKCE transaction
-survives; the secret never leaves the server.
-
-```ts
-const session = await auth.signInWithGitHubPopup();
-// const session = await auth.signInWithGitHubPopup({ callbackUri: 'http://localhost:5201/gh-callback' });
-```
-
-The callback URI defaults to `<redirectUri origin>/github-callback` and
-must be registered in the GitHub OAuth App settings; only its origin must
-be an allowed Web origin. Hosts that cannot serve an extensionless
-callback path can point the dialog at another page with the
-`github-callback-uri` attribute (or `setGitHubCallbackUri()`), which the
-GitHub button forwards to `signInWithGitHubPopup({ callbackUri })`; that
-exact page must be the registered one. A disabled provider throws
-`SdkValidationError('client.auth.provider_unavailable')` before any popup.
-A blocked popup throws `SdkAuthError('client.auth.popup_blocked')`, a
-dismissed popup throws `SdkAuthError('client.auth.popup_closed')`, a
-denial without a code throws `SdkAuthError('client.auth.access_denied')`,
-and an expired wait throws `SdkAuthError('client.auth.popup_timeout')`.
-The live round-trip needs the game callback URI registered in the GitHub
-OAuth App plus a human click; first passed on 2026-10-07 (Product Owner
-browser pass on the Angular example: dialog button → github.com popup →
-game callback → token pair → session).
-
-### Apple popup sign-in
-
-`signInWithApplePopup` matches the Publisher Portal flow: the SDK lazily
-loads AppleID JS in the host page, opens the Apple popup with the
-application's public Services ID, and posts the short-lived Apple
-authorization code plus the exact Return URL to
-`POST /client/player_apple_authorize`. The server exchanges the code with
-the Vault-backed private key (per-application client secret naming the
-exact Return URL), verifies the returned identity token (signature,
-issuer, audience, expiry, nonce binding), resolves the
-player (existing/linked/created, never merged; missing or unverified email
-fails closed), and answers the same single-use PKCE-bound code as usual,
-which the SDK exchanges at `/token`. Nothing navigates, so the in-memory
-PKCE transaction survives; the private key never leaves the server. The
-same code-posting shape is ready for future native mobile callers.
+Safari only opens the Google chooser when the popup starts inside the
+button-click call stack. The dialog element preloads the Google script
+when its Google button appears, so the click path stays synchronous;
+custom-UI hosts calling `signInWithGooglePopup()` directly should call
+`preloadGooglePopup()` when their own Google button renders. A popup
+the browser still refuses throws
+`SdkAuthError('client.auth.popup_blocked')`.
 
 ```ts
 const session = await auth.signInWithApplePopup();
-// const session = await auth.signInWithApplePopup({ returnUri: 'https://game.example.com/apple-callback' });
 ```
 
-The Return URL defaults to the redirect-URI origin with a trailing slash
-(for example `https://open4id.com/`) and must be registered exactly —
-including the trailing slash — in the Apple Services ID configuration
-under Return URLs; otherwise Apple answers `invalid_request` / `Invalid
-web redirect url`. Hosts that need another page can
-point the dialog at it with the `apple-return-uri` attribute (or
-`setAppleReturnUri()`), which the Apple button forwards to
-`signInWithApplePopup({ returnUri })`; that exact page must be the
-registered one and is named in the server-side exchange. A disabled provider throws
-`SdkValidationError('client.auth.provider_unavailable')` before any popup.
-A dismissed popup throws `SdkAuthError('client.auth.popup_closed')`, a
-denial without a code throws
-`SdkAuthError('client.auth.access_denied')`, a state mismatch throws
-`SdkAuthError('client.auth.invalid_state')`, and an expired wait throws
-`SdkAuthError('client.auth.popup_timeout')`. When the Apple script cannot
-load (for example a content blocker, or outside a browser), it throws
-`SdkUnavailableError('system.service.down')`. The live round-trip needs
-the game Return URL registered in the Apple Services ID plus a human click;
-it remains unverified, so no browser pass is claimed.
+The same Safari rule applies to the Apple popup: the dialog element
+preloads the AppleID script with its Apple button, and custom-UI hosts
+should call `preloadApplePopup()` when their own Apple button renders.
 
-### Callback URI helpers
+GitHub signs in through `signInWithGitHubPopup()` (popup at
+`github.com` plus a game callback page that forwards the provider code
+with `handleGitHubPopupCallback()`; pass `callbackUri` explicitly, or
+set the element's `github-callback-uri` attribute, when the game cannot
+serve the default `<origin>/github-callback` path). Native mobile apps
+call back through the Portal first instead of a game page: one bridge
+URL per application (`https://app.open4id.com/github-callback/<package>`
+/ `.../apple-callback/<package>`), passed as the GitHub callback URI /
+Apple Return URL — see the Android SDK README.
 
-`deriveGitHubCallbackUri`, `deriveAppleReturnUri`, and
-`deriveWebOrigin` expose the exact same rules the popup flows enforce,
-for Publisher dashboards that preview what to register at each
-provider console (no duplication, no drift):
+### Password reset
 
 ```ts
-import { deriveGitHubCallbackUri } from '@open4id/sdk';
-
-deriveGitHubCallbackUri({ redirectUri, environment });
-// → '<origin>/github-callback' (or the host override)
+await auth.requestPasswordReset('player@example.com'); // generic 202 for any well-formed address; malformed throws SdkValidationError email=invalid
+await auth.resetPassword('pat_...', 'a-brand-new-password'); // single-use 30-minute token
 ```
+
+The request answers success-shaped for any well-formed address so responses never reveal
+registration state. Resetting consumes the token, sets the bcrypt password
+(minimum 8 characters), and revokes all sessions for the player; an
+unknown or expired token throws `SdkAuthError('client.auth.reset_invalid')`.
+
+The verification email links to the game origin's `/verify-email?token=`
+page (the Angular example implements it mirroring the Publisher activate
+page); the server-hosted `/api/client/verify_email` page remains as fallback.
 
 ## Sessions
 
@@ -535,36 +391,3 @@ with `POST /api/server/player_verify_token` (server-to-server namespace,
 `sdk_sk_...` auth alone — no public key needed, app-bound `{active, ...}`
 answer) before trusting it, and owns CORS on its own URL. Publishers
 without a backend ignore this entirely: the default flow is unchanged.
-
-## Account deletion (Apple/Google compliance)
-
-`deleteAccount` deletes the current player whatever its type (native,
-guest, Google, GitHub, Apple). The access token proves ownership; the
-server revokes every session and token family, erases the profile, all
-linked identities, credentials, and action tokens, and answers 200. The
-SDK clears its in-memory session (also when the server reports the
-session is already invalid) and emits the signed-out state. Other
-failures keep the session and throw. Provider-side grants are
-additionally revoked best-effort using tokens captured at sign-in; any
-miss never blocks the local delete.
-
-```ts
-if (window.confirm('Delete this player account permanently?')) {
-  await auth.deleteAccount();
-}
-```
-
-Calling without a session throws
-`SdkAuthError('client.auth.not_authenticated')` before any fetch. The
-`<open4id-auth>` delete-account mode wraps the same call as an explicit
-confirmation step and emits `open4id-account-deleted`; both examples
-open the dialog in that mode from their Delete account buttons.
-
-## Errors
-
-All failures throw typed `SdkError` subclasses keyed by stable string
-codes. OAuth token errors map to typed SDK errors (`invalid_grant` →
-`SdkAuthError`, `invalid_request`/`unsupported_grant_type` →
-`SdkValidationError`, `temporarily_unavailable` → `SdkUnavailableError`).
-The legacy `client.login` namespace still throws `sdk.not_implemented`;
-`payments` and `entitlements` remain stubs.

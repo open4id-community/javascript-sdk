@@ -1,7 +1,19 @@
 # Changelog
 
+## 0.3.1
+
+- Forgot-password email format check: `requestPasswordReset()` rejects
+  malformed addresses locally with `SdkValidationError`
+  (`field_errors.email = invalid`, same shape rule as Core API) without
+  any network call; unknown addresses still get the generic success so
+  responses never reveal registration state. New `invalid_email` dialog
+  text (en/vi) rendered by `<open4id-auth>` for both local and server
+  (`400 client.player.invalid_request`) rejections.
+- `SDK_VERSION` header (`X-Open4ID-SDK-Version`) synced to the package
+  version (was stuck at `0.2.0`); README CDN pin updated to `0.3.1`.
+
 ## 0.3.0
-- Add examples
+
 - Safari popup fix (additive): new `preloadGooglePopup()` /
   `preloadApplePopup()` exports. The `<open4id-auth>` element warms both
   provider scripts when its buttons appear, and `signInWithGooglePopup()`
