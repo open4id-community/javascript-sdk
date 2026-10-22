@@ -5,7 +5,7 @@
 
 Framework-agnostic JavaScript SDK for Open4ID player authentication:
 OAuth Authorization Code + PKCE, social provider popups (Google, GitHub,
-Apple), guest sessions, and a Shadow-DOM `<open4id-auth>` element. No
+Facebook, Apple), guest sessions, and a Shadow-DOM `<open4id-auth>` element. No
 runtime dependencies.
 
 ## Quick start: the dialog element in 5 steps
@@ -19,7 +19,7 @@ runtime dependencies.
 Register the exact redirect URI (e.g. `https://game.example.com/open4id/callback`)
 and the game origin in your Open4ID application. The Authentication page
 shows the exact callback values to paste at each provider console
-(Google / GitHub / Apple) — copy them character for character.
+(Google / GitHub / Facebook / Apple) — copy them character for character.
 
 ### Step 1 — Install
 
@@ -72,8 +72,8 @@ login.addEventListener('open4id-account-deleted', () => showLandingPage());
 dialog.showModal(); // open it from your Login button
 ```
 
-Email/password, sign-up, guest, Google, GitHub, and Apple all render
-inside — no provider code on your side.
+Email/password, sign-up, guest, Google, GitHub, Facebook, and Apple all
+render inside — no provider code on your side.
 
 ### Step 4 — Use the session
 
@@ -95,7 +95,7 @@ await auth.deleteAccount();  // permanent; needs a signed-in session
 - **Remember login across reloads:** pass `storage: new SessionStorageSessionStore('open4id.session.<appId>')` (see Sessions).
 
 Direct using? Import from CDN instead of installing:
-`https://unpkg.com/@open4id/sdk@0.3.1/dist/index.js`.
+`https://unpkg.com/@open4id/sdk@0.4.0/dist/index.js`.
 
 ## Concepts: dialog element vs headless client
 
@@ -124,7 +124,7 @@ from safe bootstrap readiness, and every protocol operation runs in the
 bound headless client: credentials and tokens never leave the client
 except through its accessors. It shows only the login methods the
 Publisher enabled for the environment (normal email/password, guest,
-Google, GitHub, Apple) — toggled in the Publisher Portal under App
+Google, GitHub, Facebook, Apple) — toggled in the Publisher Portal under App
 Settings → SDK & API keys → Login methods — and hides the rest
 automatically after the next bootstrap.
 
@@ -136,7 +136,7 @@ const login = document.querySelector('open4id-auth');
 login?.setBootstrap(auth.getBootstrap());
 login?.setAuthClient(auth);
 login?.addEventListener('open4id-signed-in', (event) => {
-  // (event as CustomEvent).detail.provider: 'email_password' | 'guest' | 'google' | 'github' | 'apple'
+  // (event as CustomEvent).detail.provider: 'email_password' | 'guest' | 'google' | 'github' | 'facebook' | 'apple'
   // read auth.getSession() / auth.getCachedUser() and close the dialog
 });
 ```
@@ -165,9 +165,11 @@ guidance instead of raw errors. Google brokering has a backend slice, so
 the Google button signs in through `signInWithGooglePopup` (GIS popup, no
 navigation); GitHub brokering has a backend slice too, so the GitHub button
 signs in through `signInWithGitHubPopup` (popup at `github.com` plus a game
-callback page); Apple brokering has a backend slice too, so the Apple
-button signs in through `signInWithApplePopup` (AppleID popup, no
-navigation). The component never parses,
+callback page); Facebook brokering has a backend slice too, so the Facebook
+button signs in through `signInWithFacebookPopup` (popup at `facebook.com`
+plus a game callback page); Apple brokering has a backend slice too, so
+the Apple button signs in through `signInWithApplePopup` (AppleID popup,
+no navigation). The component never parses,
 validates, stores, or exposes player tokens.
 
 The delete-account mode (`mode="delete-account"` or
@@ -280,14 +282,46 @@ preloads the AppleID script with its Apple button, and custom-UI hosts
 should call `preloadApplePopup()` when their own Apple button renders.
 
 GitHub signs in through `signInWithGitHubPopup()` (popup at
-`github.com` plus a game callback page that forwards the provider code
+`github.com` plus the shared Portal callback page
+`https://app.open4id.com/github-callback` that forwards the provider code
 with `handleGitHubPopupCallback()`; pass `callbackUri` explicitly, or
-set the element's `github-callback-uri` attribute, when the game cannot
-serve the default `<origin>/github-callback` path). Native mobile apps
+set the element's `github-callback-uri` attribute, when you host your own
+callback page — for example a localhost page in development).
+
+Facebook signs in through `signInWithFacebookPopup()` (popup at
+`facebook.com`, pinned Graph API `v26.0`, plus the shared Portal callback
+page `https://app.open4id.com/facebook-callback` that forwards the
+provider code with `handleFacebookPopupCallback()`; pass `callbackUri`
+explicitly, or set the element's `facebook-callback-uri` attribute, when
+you host your own callback page — the exact URI goes into the Facebook
+app's Valid OAuth Redirect URIs, and players must grant the `email`
+permission because Facebook exposes no verified-email flag). The shared
+Portal pages are cross-origin from the game opener: the SDK packs the
+opener origin into the provider state, and the callback page targets it
+when posting the response back.
+
+Native mobile apps
 call back through the Portal first instead of a game page: one bridge
 URL per application (`https://app.open4id.com/github-callback/<package>`
-/ `.../apple-callback/<package>`), passed as the GitHub callback URI /
+/ `.../facebook-callback/<package>` / `.../apple-callback/<package>`),
+passed as the GitHub callback URI / Facebook callback URI /
 Apple Return URL — see the Android SDK README.
+
+Apple never accepts HTTP Return URLs — there is no localhost exception
+(unlike the game redirect URI and the GitHub/Facebook callbacks, which
+allow loopback HTTP in development) — and its popup flow additionally
+answers with `response_mode=web_message`, posting the response to the
+redirect_uri origin: a hard same-origin rule. The Return URL therefore
+derives from the page's own origin (the registered redirect URI origin),
+must be HTTPS, and must be registered on the Services ID. Local testing
+on `http://localhost:5200` cannot work for Apple (HTTP is rejected);
+test on an HTTPS origin (`https://localhost` with a local certificate,
+a tunnel, or a deployed environment). The SDK rejects an HTTP origin
+locally with a dedicated `client.auth.https_required` code, and the
+`<open4id-auth>` element maps it to an actionable hint instead of
+surfacing Apple's cryptic `invalid_request` popup error. GitHub and Facebook keep the shared Portal callback default:
+their callbacks are plain GET redirects the Portal bridge completes, so
+they work from any page origin.
 
 ### Password reset
 

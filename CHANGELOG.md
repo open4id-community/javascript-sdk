@@ -1,5 +1,60 @@
 # Changelog
 
+# Changelog
+
+## 0.4.0
+
+- **Shared Portal callback defaults (GitHub/Facebook only)**: the popup
+  callback defaults now live on the Portal instead of the game origin —
+  GitHub `https://app.open4id.com/github-callback`, Facebook
+  `https://app.open4id.com/facebook-callback` (mirroring the native SDKs'
+  per-app Portal bridges; `DEFAULT_PORTAL_ORIGIN` is exported). Both are
+  plain GET redirects the Portal bridge completes, so they work from any
+  page origin; the SDK packs the opener
+  origin into the provider state, and the shared Portal callback pages
+  target it when posting `{code, state}` back — cross-origin popups
+  complete without the game hosting a callback page. Game-hosted callback
+  pages keep working (unpacked states fall back to the page origin), and
+  explicit `callbackUri` / element-attribute overrides still win (use them
+  for localhost in development — GitHub/Facebook accept loopback HTTP).
+  `deriveGitHubCallbackUri` / `deriveFacebookCallbackUri` no longer read
+  the `redirectUri` input (accepted for compatibility); the Publisher
+  preview shows the shared URL plus one bridge URL per enabled native
+  platform.
+- **Apple popup Return URL stays origin-derived, now HTTPS-only**: Apple's
+  popup answers with `response_mode=web_message`, posting the response to
+  the redirect_uri origin — a hard same-origin rule that a shared Portal
+  Return URL cannot satisfy — so `resolveAppleReturnUri` keeps deriving
+  the Return URL from the page's own origin (the registered redirect URI
+  origin), and the Publisher preview shows one Return URL per registered
+  redirect URI (their origins) plus the native bridges. Apple also never
+  accepts HTTP (no localhost exception), so an HTTP origin is rejected
+  locally with the dedicated `client.auth.https_required` code — mapped
+  by the `<open4id-auth>` element to an actionable hint — instead of
+  Apple's cryptic `invalid_request` inside the popup; local testing
+  needs an HTTPS page origin (`https://localhost` with a local
+  certificate, a tunnel, or a deployed environment).
+- **Facebook Sign-In (popup)**: new `signInWithFacebookPopup()` on the
+  headless client and the `<open4id-auth>` Facebook button. The SDK opens
+  a popup at the Facebook OAuth dialog (pinned Graph API `v26.0`,
+  `scope=email`) bound to the game callback URI (default the shared Portal
+  bridge `https://app.open4id.com/facebook-callback`, overridable via
+  `FacebookPopupSignInOptions.callbackUri` or the element's
+  `facebook-callback-uri` attribute / `setFacebookCallbackUri()`), then
+  posts `facebook_code` + `facebook_redirect_uri` to
+  `POST /api/client/player_facebook_authorize` exactly like the GitHub
+  flow; the server exchanges the code with the Vault-backed App Secret
+  and answers the same single-use PKCE-bound authorization code. Requires
+  the Facebook provider enabled in bootstrap (`login.facebook`); denial
+  cancels with the popup error family. New exports:
+  `handleFacebookPopupCallback()` (callback page postMessage forward),
+  `FACEBOOK_CALLBACK_TYPE`, `deriveFacebookCallbackUri()` (Publisher
+  preview derivation), and `FacebookPopupSignInOptions`. The GitHub
+  waiter and callback-page handler were refactored into shared
+  provider-agnostic internals — GitHub's exported shapes are unchanged.
+- Examples gained `/facebook-callback` pages (minimal, UI-element,
+  vanilla, Angular) and GitHub-parallel buttons; CDN pins synced to `0.4.0`.
+    
 ## 0.3.1
 
 - Forgot-password email format check: `requestPasswordReset()` rejects

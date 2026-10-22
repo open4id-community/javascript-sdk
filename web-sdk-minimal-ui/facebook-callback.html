@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Completing Facebook sign-in — Open4ID UI-element sample</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "@open4id/sdk": "https://esm.sh/@open4id/sdk@0.4.0"
+      }
+    }
+  </script>
+</head>
+<body>
+  <main>
+    <h1>Completing Facebook sign-in</h1>
+    <p id="status" role="status">Forwarding the Facebook response…</p>
+    <p><a id="return-to-app" href="#" hidden>Return to app</a></p>
+  </main>
+  <script type="module">
+    import { handleFacebookPopupCallback } from '@open4id/sdk';
+
+    // This page is optional: the SDK's default Facebook callback is the
+    // shared Portal bridge (`https://app.open4id.com/facebook-callback`),
+    // so a game only needs this page when it overrides the callback URI
+    // (element `facebook-callback-uri` attribute or
+    // `setFacebookCallbackUri()`) to point here — that URL must then be
+    // registered as a Valid OAuth Redirect URI in the Facebook app
+    // settings. When the SDK opened it as a Facebook popup, forward the
+    // provider code to the opener; the opener validates origin, source,
+    // and state before exchanging it.
+    const status = document.getElementById('status');
+    if (window.opener && !window.opener.closed) {
+      try {
+        handleFacebookPopupCallback();
+        status.textContent =
+          'Facebook approved. This window closes automatically; if it stays open you can close it.';
+      } catch {
+        status.textContent =
+          'This page only completes a Facebook popup sign-in. Open it through the Login dialog instead.';
+      }
+    } else {
+      // Mobile bridge (native SDK Custom Tab): no popup opener exists, so
+      // offer a return-to-app deep link carrying the code/state pair.
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get('code');
+        const state = params.get('state');
+        if (code && state) {
+          const target =
+            `com.open4id.example.android://open4id/facebook-callback` +
+            `?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`;
+          const link = document.getElementById('return-to-app');
+          link.href = target;
+          link.hidden = false;
+          status.textContent = 'Facebook approved. Return to the app to finish sign-in.';
+          window.location.href = target;
+        } else {
+          status.textContent =
+            'This page only completes a Facebook popup sign-in. Open it through the Login dialog instead.';
+        }
+      } catch {
+        status.textContent =
+          'This page only completes a Facebook popup sign-in. Open it through the Login dialog instead.';
+      }
+    }
+  </script>
+</body>
+</html>

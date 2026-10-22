@@ -10,7 +10,7 @@
   <script type="importmap">
     {
       "imports": {
-        "@open4id/sdk": "https://esm.sh/@open4id/sdk@0.3.0"
+        "@open4id/sdk": "https://esm.sh/@open4id/sdk@0.4.0"
       }
     }
   </script>
@@ -24,10 +24,14 @@
   <script type="module">
     import { handleGitHubPopupCallback } from '@open4id/sdk';
 
-    // This page must match the game callback URI registered in the GitHub
-    // OAuth App settings (default `<origin>/github-callback`). When the SDK
-    // opened it as a GitHub popup, forward the provider code to the opener;
-    // the opener validates origin, source, and state before exchanging it.
+    // This page is optional: the SDK's default GitHub callback is the
+    // shared Portal bridge (`https://app.open4id.com/github-callback`),
+    // so a game only needs this page when it passes
+    // `signInWithGitHubPopup({ callbackUri })` pointing here — that URL
+    // must then be registered in the GitHub OAuth App settings. When
+    // the SDK opened it as a GitHub popup, forward the provider code to
+    // the opener; the opener validates origin, source, and state before
+    // exchanging it.
     const status = document.getElementById('status');
     if (window.opener && !window.opener.closed) {
       try {

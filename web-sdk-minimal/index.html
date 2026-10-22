@@ -13,7 +13,7 @@
     pre { background: #f4f6fa; padding: 0.8rem; overflow-x: auto; }
   </style>
   <script type="importmap">
-    { "imports": { "@open4id/sdk": "https://esm.sh/@open4id/sdk@0.3.1" } }
+    { "imports": { "@open4id/sdk": "https://esm.sh/@open4id/sdk@0.4.0" } }
   </script>
 </head>
 <body>
@@ -42,7 +42,7 @@
 
   <fieldset>
     <legend>Player</legend>
-    <label>Email <input id="email" type="email" placeholder="you@example.com" autocomplete="email"></label>
+    <label>Email <input id="email" type="email" placeholder="Type your email" autocomplete="email"></label>
     <label>Password <input id="password" type="password" placeholder="at least 8 characters" autocomplete="current-password"></label>
     <div>
       <button id="register" type="button">2a. Register</button>
@@ -57,7 +57,8 @@
     <div>
       <button id="google" type="button">2e. Sign in with Google</button>
       <button id="github" type="button">2f. Sign in with GitHub</button>
-      <button id="apple" type="button">2g. Sign in with Apple</button>
+      <button id="facebook" type="button">2g. Sign in with Facebook</button>
+      <button id="apple" type="button">2h. Sign in with Apple</button>
     </div>
   </fieldset>
 
@@ -167,13 +168,19 @@
     };
 
     // Provider popups: headless equivalents of the dialog's provider
-    // buttons. Google uses a GIS popup (no navigation). GitHub opens
-    // github.com and returns through github-callback.html in this folder
-    // (must be registered in the GitHub OAuth App settings). Apple uses
-    // an AppleID popup bound to the redirect-URI origin (must be
-    // registered as the Return URL in the Apple Services ID settings).
-    // All three post the short-lived provider code to the server, which
-    // answers the same PKCE-bound authorization code as the native flows.
+    // buttons. Google uses a GIS popup (no navigation). GitHub and
+    // Facebook open the provider and complete through the shared Portal
+    // callback bridges by default (the opener origin travels packed in
+    // the provider state) — pass { callbackUri } to route them through
+    // the game-hosted github-callback.html / facebook-callback.html in
+    // this folder instead, then register those URLs in the GitHub OAuth
+    // App / Facebook app settings. Apple uses an AppleID popup bound to
+    // the redirect-URI origin (register it as the Return URL in the
+    // Apple Services ID settings; HTTPS origin required — Apple never
+    // accepts HTTP, this sample's http://localhost:5200 fails with
+    // client.auth.https_required). All four post the short-lived
+    // provider code to the server, which answers the same PKCE-bound
+    // authorization code as the native flows.
     async function providerSignIn(method, label) {
       try {
         await configuredClient().bootstrap({ platform: 'web' });
@@ -184,6 +191,7 @@
 
     $('google').onclick = () => providerSignIn('signInWithGooglePopup', 'signed in with Google:');
     $('github').onclick = () => providerSignIn('signInWithGitHubPopup', 'signed in with GitHub:');
+    $('facebook').onclick = () => providerSignIn('signInWithFacebookPopup', 'signed in with Facebook:');
     $('apple').onclick = () => providerSignIn('signInWithApplePopup', 'signed in with Apple:');
 
     // The form does not survive a page reload, so stash the public
@@ -201,7 +209,7 @@
         endpoint: $('endpoint').value.trim(),
       }));
     }
-    for (const button of ['bootstrap', 'register', 'signin', 'guest', 'link', 'google', 'github', 'apple', 'refresh', 'signout', 'delete']) {
+    for (const button of ['bootstrap', 'register', 'signin', 'guest', 'link', 'google', 'github', 'facebook', 'apple', 'refresh', 'signout', 'delete']) {
       $(button).addEventListener('click', stash);
     }
 
