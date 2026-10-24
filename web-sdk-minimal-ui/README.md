@@ -12,7 +12,7 @@ unchanged, so the dialog remembers the session: reopening it shows the
 account view, and the Account shortcuts jump straight into link-email,
 forgot-password (change password), delete-account, or logout.
 
-It needs the published SDK (`@open4id/sdk@0.4.0` via `esm.sh`, pinned in
+It needs the published SDK (`@open4id/sdk@0.4.1` via `esm.sh`, pinned in
 `index.html`), so publish the SDK first — see
 `docs/JAVASCRIPT_SDK_RELEASING.md`.
 

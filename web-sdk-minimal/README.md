@@ -7,7 +7,7 @@ register/sign-in, guest sign-in plus guest-to-email linking, Google /
 GitHub / Facebook / Apple popup sign-in, session refresh, sign-out, and
 account deletion.
 
-It needs the published SDK (`@open4id/sdk@0.4.0` via `esm.sh`, pinned in
+It needs the published SDK (`@open4id/sdk@0.4.1` via `esm.sh`, pinned in
 `index.html`), so publish the SDK first — see
 `docs/JAVASCRIPT_SDK_RELEASING.md`.
 
