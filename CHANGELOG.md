@@ -1,6 +1,28 @@
 # Changelog
 
-# Changelog
+## 0.4.2 (2026-11-13)
+
+- **Guest button visibility**: the bootstrap `login` block gains
+  `guestButtonVisible` (wire `guest_button_visible`), split from
+  `guestEnabled`. The capability keeps gating guest identities and
+  guest-bound payments; the flag only decides whether `<open4id-auth>`
+  renders "Continue as guest". It defaults to `guest_enabled` when the wire
+  omits it, so older Core API responses behave exactly as before. Anonymous
+  checkout is `guest_enabled: true` with `guest_button_visible: false`.
+
+## 0.4.1
+
+- **GitHub provider mark**: the element's inline glyph is now the web app's
+  canonical octocat (`apps/app.open4id.com/public/icons/github.svg`, viewBox
+  98x96 — the artwork the Android/iOS SDKs and the Flutter package vendor).
+  The previous 16-unit glyph closed its outline with a straight chord, so
+  the mark rendered with a flat right edge.
+- **Provider buttons**: the Apple mark is scaled 1.2× (its narrower glyph
+  read small in the shared 1.1rem box, matching the native SDKs) and long
+  labels no longer wrap — the row reserves clearance past the
+  absolutely-positioned mark, with `white-space: nowrap` and ellipsis for
+  extreme cases, so "Sign in with Facebook" stays on one line in narrow
+  hosts.
 
 ## 0.4.0
 
@@ -53,8 +75,9 @@
   waiter and callback-page handler were refactored into shared
   provider-agnostic internals — GitHub's exported shapes are unchanged.
 - Examples gained `/facebook-callback` pages (minimal, UI-element,
-  vanilla, Angular) and GitHub-parallel buttons; CDN pins synced to `0.4.0`.
-    
+  vanilla, Angular) and GitHub-parallel buttons; CDN pins synced to
+  `0.4.0`.
+
 ## 0.3.1
 
 - Forgot-password email format check: `requestPasswordReset()` rejects
@@ -130,3 +153,40 @@
   clones.
 
 ## 0.1.0 — First release
+
+Framework-agnostic Web JavaScript SDK for Open4ID player authentication.
+
+### Headless client (`@open4id/sdk`)
+- OAuth Authorization Code + PKCE S256: redirect (`signInWithRedirect` /
+  `handleCallback`), popup (`signInWithPopup` / `handlePopupCallback`),
+  dialog (`signInWithPassword`), guest (`continueAsGuest` / `linkEmail`).
+- Provider popups: Google GIS, GitHub (game callback page), Apple
+  (AppleID JS), all bound to the same PKCE code exchange.
+- Registration, email verification, password reset, token refresh with
+  rotation, revoke-on-sign-out, account deletion.
+- `ensureSession(minValidityMs)` (Keycloak-style `updateToken`):
+  no-op when still valid, one rotation otherwise; concurrent refreshes
+  are single-flight and concurrent logins/refreshes serialize in start
+  order. A sign-out/deletion/reset landing mid-flight wins.
+- Only idempotent reads retry after a network flap or timeout;
+  single-use exchanges never retry.
+- Opt-in session persistence (`SessionStore`; memory default,
+  `LocalStorageSessionStore`, `SessionStorageSessionStore`) with
+  restore-on-configure and foreign/malformed blob rejection.
+- Typed errors keyed by stable `client.auth.*` / `system.*` keys; error
+  text is never translated, only UI strings are.
+
+### Auth element (`@open4id/sdk/ui`)
+- Shadow-DOM `<open4id-auth>` with sign-in, sign-up, forgot-password,
+  link-email, and delete-account modes (English + Vietnamese).
+- Session-aware: a held session renders the signed-in view (with a
+  refresh prompt past the expiry skew) instead of the login form.
+- Events: `open4id-signed-in` (detail always carries `provider`),
+  `open4id-signed-out`, `open4id-account-deleted`.
+
+### Packaging
+- Prebuilt ESM `dist/` with declarations and sourcemaps (`npm run
+  build`; also runs on `prepare` and `prepack`, so git installs and fresh
+  clones self-build). `publishConfig.access` is public.
+- Requires Node >= 18 (or a modern browser); WebCrypto Subtle needs a
+  secure context for PKCE flows.

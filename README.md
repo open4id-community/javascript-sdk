@@ -95,7 +95,7 @@ await auth.deleteAccount();  // permanent; needs a signed-in session
 - **Remember login across reloads:** pass `storage: new SessionStorageSessionStore('open4id.session.<appId>')` (see Sessions).
 
 Direct using? Import from CDN instead of installing:
-`https://unpkg.com/@open4id/sdk@0.4.0/dist/index.js`.
+`https://unpkg.com/@open4id/sdk@0.4.2/dist/index.js`.
 
 ## Concepts: dialog element vs headless client
 
