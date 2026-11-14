@@ -7,13 +7,13 @@ register/sign-in, guest sign-in plus guest-to-email linking, Google /
 GitHub / Facebook / Apple popup sign-in, session refresh, sign-out, and
 account deletion.
 
-It needs the published SDK (`@open4id/sdk@1.0.0` via `esm.sh`, pinned in
-`index.html`), so publish the SDK first — see
-`docs/JAVASCRIPT_SDK_RELEASING.md`.
+It consumes the published `@open4id/sdk@1.0.0` from `esm.sh` (pinned in
+`index.html`), so it always tracks a released version: move the pin when a
+newer release ships.
 
 ## Prerequisites
 
-The form comes prefilled with the Angular example's development config
+The form comes prefilled with the demo development application's config
 (same App ID, environment, public key, and production endpoint), served
 from the same origin (`http://localhost:5200`) with the same redirect
 URI (`.../open4id/callback`) — everything is already registered for the
@@ -59,7 +59,7 @@ npm start
 # open http://localhost:5200 and press “1. Bootstrap”
 ```
 
-(Stop the Angular example first — it uses the same port.)
+(The other web sample uses port 5200 too — stop it first.)
 
 Click through: **1. Bootstrap** (public discovery, no secrets) →
 **2a. Register** (sends the 24h verification email) or **2b. Sign in**
@@ -76,7 +76,8 @@ branch on and to file as bug reports.
   form values (never secrets — there are none in the browser) persist
   in `sessionStorage` for convenience.
 - No redirect flow here by design: that needs a callback route plus a
-  surviving PKCE transaction (see the Angular and vanilla examples).
+  surviving PKCE transaction, which this single-file sample does not set
+  up.
   The provider popups are the in-page exception, and since SDK 0.4.0
   the GitHub/Facebook ones need no callback page of your own (shared
   Portal bridges). The `github-callback.html` / `facebook-callback.html`

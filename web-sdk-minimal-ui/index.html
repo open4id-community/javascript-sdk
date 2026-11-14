@@ -114,8 +114,8 @@
           publicSdkKey: $('publicSdkKey').value.trim(),
           endpoint: $('endpoint').value.trim() || undefined,
           // Bound to every code the dialog flows issue; register the
-          // same string (the Angular example's value — no dashboard
-          // change needed). Nothing navigates to it here.
+          // same string (the demo app's value — no dashboard change
+          // needed). Nothing navigates to it here.
           redirectUri: `${window.location.origin}/open4id/callback`,
         });
         element.setAuthClient(auth);

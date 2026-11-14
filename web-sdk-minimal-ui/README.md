@@ -12,13 +12,13 @@ unchanged, so the dialog remembers the session: reopening it shows the
 account view, and the Account shortcuts jump straight into link-email,
 forgot-password (change password), delete-account, or logout.
 
-It needs the published SDK (`@open4id/sdk@1.0.0` via `esm.sh`, pinned in
-`index.html`), so publish the SDK first — see
-`docs/JAVASCRIPT_SDK_RELEASING.md`.
+It consumes the published `@open4id/sdk@1.0.0` from `esm.sh` (pinned in
+`index.html`), so it always tracks a released version: move the pin when a
+newer release ships.
 
 ## Prerequisites
 
-Prefilled with the Angular example's development config and served from
+Prefilled with the demo development application's config and served from
 the same origin (`http://localhost:5200`) with the same redirect URI
 (`.../open4id/callback`) — everything is already registered for the dev
 app, so it works with no dashboard changes. Replace the values with your
@@ -45,7 +45,7 @@ npm start
 - The `github-callback.html` / `facebook-callback.html` pages shipped
   here are optional overrides for the game-hosted callback path: point
   the element's `github-callback-uri` / `facebook-callback-uri`
-  attributes at them (like the vanilla example does) and register the
-  URLs in the GitHub OAuth App / Facebook app settings.
+  attributes at them and register the URLs in the GitHub OAuth App /
+  Facebook app settings.
 - Never put `sdk_sk_...`, provider secrets, or tokens in the page. The
   only credential here is the public `sdk_pk_...` key.
