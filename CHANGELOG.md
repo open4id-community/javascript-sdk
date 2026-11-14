@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.0.0 (2026-11-15)
+
+First stable release: the headless client and `<open4id-auth>` element APIs
+are now covered by semver. No breaking changes against `0.4.2` — the two
+additions below are the release.
+
+- **App-open analytics**: `appOpen()` sends the fire-and-forget cold-start
+  ping to `client/app_open` with a locally minted installation id
+  (`getDeviceId()`, random UUID v4 persisted in `localStorage`, ephemeral in
+  memory when storage is unavailable). The ping never throws and never
+  blocks startup; the server stores only a salted hash of the id.
+  `resetDeviceId()` is the debug/support reset hook. The ping is skipped
+  when no origin is available (SSR without an explicit origin), matching
+  the web key's origin binding.
+- **Signed-out account deletion**: `requestAccountDeletion(email)` posts
+  `client/player_deletion_request` and emails the same single-use 30-minute
+  token family as the password reset. The link targets the game origin's
+  `/delete-account` page, or the Portal `/player-delete-account` page when the
+  request carries no game origin. Malformed addresses throw
+  `SdkValidationError` locally; unknown addresses still answer the generic
+  `202`. Signed-in players keep using `deleteAccount()`.
+
 ## 0.4.2 (2026-11-13)
 
 - **Guest button visibility**: the bootstrap `login` block gains

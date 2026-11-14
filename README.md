@@ -89,13 +89,30 @@ await auth.ensureSession(); // no-op when still valid, rotates when near expiry
 await auth.ensureSession();  // call before important calls
 await auth.signOut();        // revoke server-side, clear local state
 await auth.deleteAccount();  // permanent; needs a signed-in session
+await auth.requestAccountDeletion('player@example.com'); // signed-out: emails a single-use deletion link
 ```
 
 ### Notice:
 - **Remember login across reloads:** pass `storage: new SessionStorageSessionStore('open4id.session.<appId>')` (see Sessions).
 
+### App-open analytics (optional)
+
+Call `appOpen()` once per page load to feed the dashboard's opens/devices
+counters. It is fire-and-forget: it never throws and never blocks startup.
+
+```ts
+auth.appOpen(); // cold start; resolves even when the network fails
+auth.getDeviceId();   // locally minted installation id (device_id)
+auth.resetDeviceId(); // debug/support reset hook
+```
+
+The id is a random UUID v4 minted locally and persisted in `localStorage`
+(memory-only when storage is unavailable). It is **attribution metadata,
+not a credential** — the server stores only a salted hash of it, clears it
+with the retention windows, and the id can never sign anything in.
+
 Direct using? Import from CDN instead of installing:
-`https://unpkg.com/@open4id/sdk@0.4.2/dist/index.js`.
+`https://unpkg.com/@open4id/sdk@1.0.0/dist/index.js`.
 
 ## Concepts: dialog element vs headless client
 
@@ -338,6 +355,28 @@ unknown or expired token throws `SdkAuthError('client.auth.reset_invalid')`.
 The verification email links to the game origin's `/verify-email?token=`
 page (the Angular example implements it mirroring the Publisher activate
 page); the server-hosted `/api/client/verify_email` page remains as fallback.
+
+### Signed-out account deletion
+
+```ts
+await auth.requestAccountDeletion('player@example.com'); // generic 202 for any well-formed address; malformed throws SdkValidationError email=invalid
+```
+
+For a player who cannot sign in (lost password, banned device, or a
+support request), this sends the same single-use 30-minute token family
+as the password reset. The emailed link points at the game origin's
+`/delete-account?token=...` page; when the request carries no game
+origin (server-side callers, native SDKs), it falls back to the Portal
+`/player-delete-account?token=...` page, so the email always has a host.
+Confirming consumes the token and deletes the account exactly like
+`deleteAccount()`: provider grants are revoked best-effort, every session
+and refresh token is revoked, the profile and linked identities are
+erased, and a PII-free audit record is kept. Responses are success-shaped
+for any well-formed address, and the request is rate-limited per address.
+
+Signed-in players should use `deleteAccount()` — it needs no email
+round-trip. Both entry points obey the publisher delete-button toggle;
+a disabled application answers `403`.
 
 ## Sessions
 
