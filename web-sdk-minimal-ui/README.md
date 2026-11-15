@@ -47,5 +47,13 @@ npm start
   the element's `github-callback-uri` / `facebook-callback-uri`
   attributes at them and register the URLs in the GitHub OAuth App /
   Facebook app settings.
+- App-open analytics and signed-out deletion sit next to the dialog:
+  creating the client shows the locally minted device id and sends one
+  fire-and-forget `appOpen()` ping, **Reset device id** calls
+  `resetDeviceId()`, and **Email deletion link** calls
+  `requestAccountDeletion(email)` for a player who cannot sign in. That
+  request always answers the same generic `202` for a well-formed
+  address; the emailed link points at this origin's `/delete-account`
+  page, which a real game hosts itself (the SDK has no confirm method).
 - Never put `sdk_sk_...`, provider secrets, or tokens in the page. The
   only credential here is the public `sdk_pk_...` key.

@@ -4,8 +4,9 @@ The smallest possible `@open4id/sdk` integration: one HTML file, no
 framework, no bundler, no build step. It exercises the headless client
 directly (`createAuthClient`): bootstrap discovery, email
 register/sign-in, guest sign-in plus guest-to-email linking, Google /
-GitHub / Facebook / Apple popup sign-in, session refresh, sign-out, and
-account deletion.
+GitHub / Facebook / Apple popup sign-in, session refresh, sign-out,
+account deletion, app-open analytics, and the signed-out deletion
+request.
 
 It consumes the published `@open4id/sdk@1.0.0` from `esm.sh` (pinned in
 `index.html`), so it always tracks a released version: move the pin when a
@@ -66,7 +67,9 @@ Click through: **1. Bootstrap** (public discovery, no secrets) →
 / **2c. Continue as guest** / **2e–2h. Provider popups** (Google GIS,
 GitHub / Facebook via the shared Portal callback bridges, Apple; no
 navigation) → **3. Refresh** (`ensureSession`, rotates only near
-expiry) → **4. Sign out** (revokes server-side, clears memory). SDK
+expiry) → **4. Sign out** (revokes server-side, clears memory).
+**6. Reset device id** re-mints the installation id and **7. Email
+deletion link** starts the signed-out deletion flow. SDK
 failures render as stable error keys (`client.*`, `system.*`), safe to
 branch on and to file as bug reports.
 
@@ -75,6 +78,17 @@ branch on and to file as bug reports.
 - Sessions live in SDK instance memory only and vanish on reload; the
   form values (never secrets — there are none in the browser) persist
   in `sessionStorage` for convenience.
+- App-open analytics is wired on the cold start: creating the client
+  shows the locally minted device id and sends one fire-and-forget
+  `appOpen()` ping (it never throws and never blocks the page). The id is
+  attribution metadata, not a credential — the server keeps only a salted
+  hash — and **6. Reset device id** calls `resetDeviceId()`.
+- Signed-out deletion stops at the request: **7. Email deletion link**
+  calls `requestAccountDeletion(email)`, which always answers the same
+  generic `202` for a well-formed address. The emailed link points at
+  this origin's `/delete-account` page, which a real game hosts itself
+  (the SDK has no confirm method), so this sample does not implement that
+  page.
 - No redirect flow here by design: that needs a callback route plus a
   surviving PKCE transaction, which this single-file sample does not set
   up.

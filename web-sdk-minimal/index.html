@@ -71,6 +71,31 @@
     </div>
   </fieldset>
 
+  <fieldset>
+    <legend>App-open analytics (optional)</legend>
+    <p>One fire-and-forget <code>appOpen()</code> ping per page load feeds the
+    dashboard's opens/devices counters. The installation id is minted locally
+    and is attribution metadata, not a credential — the server keeps only a
+    salted hash of it.</p>
+    <p>Device id <code id="deviceId">—</code></p>
+    <div>
+      <button id="resetDevice" type="button">6. Reset device id</button>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Delete an account without signing in</legend>
+    <p>For a player who cannot sign in, <code>requestAccountDeletion()</code>
+    emails a single-use 30-minute link. The answer is generic for any
+    well-formed address, so it never reveals whether an account exists. The
+    link points at this origin's <code>/delete-account</code> page, which a
+    real game hosts itself — this sample stops at the request.</p>
+    <label>Email <input id="deleteEmail" type="email" placeholder="player@example.com" autocomplete="email"></label>
+    <div>
+      <button id="requestDeletion" type="button">7. Email deletion link</button>
+    </div>
+  </fieldset>
+
   <h2>Status</h2>
   <pre id="out">Fill in the application values and press “1. Bootstrap”.</pre>
 
@@ -81,6 +106,7 @@
     const out = $('out');
     let auth = null;
     let lastConfigKey = '';
+    let appOpenSent = false;
 
     const show = (label, value) => {
       out.textContent = `${label}\n` + JSON.stringify(value, null, 2);
@@ -114,6 +140,15 @@
         ...(endpoint ? { endpoint } : {}),
       });
       lastConfigKey = key;
+      // SDK 1.0.0 analytics: show the locally minted installation id and
+      // send one fire-and-forget cold-start ping per page load. The ping
+      // never throws and never blocks startup; it is skipped only when a
+      // form value is left empty.
+      $('deviceId').textContent = auth.getDeviceId();
+      if (!appOpenSent) {
+        appOpenSent = true;
+        auth.appOpen();
+      }
       return auth;
     }
 
@@ -209,7 +244,7 @@
         endpoint: $('endpoint').value.trim(),
       }));
     }
-    for (const button of ['bootstrap', 'register', 'signin', 'guest', 'link', 'google', 'github', 'facebook', 'apple', 'refresh', 'signout', 'delete']) {
+    for (const button of ['bootstrap', 'register', 'signin', 'guest', 'link', 'google', 'github', 'facebook', 'apple', 'refresh', 'signout', 'delete', 'requestDeletion']) {
       $(button).addEventListener('click', stash);
     }
 
@@ -239,6 +274,33 @@
         show('account deleted. Local session cleared.', {});
       } catch (error) { fail(error); }
     };
+
+    $('resetDevice').onclick = () => {
+      try {
+        // Debug/support hook: the next app-open ping reports a new
+        // installation. `getDeviceId()` mints a fresh UUID v4 on demand.
+        configuredClient().resetDeviceId();
+        $('deviceId').textContent = auth.getDeviceId();
+        show('device id reset. The next app-open ping reports a new installation.', {
+          deviceId: auth.getDeviceId(),
+        });
+      } catch (error) { fail(error); }
+    };
+
+    $('requestDeletion').onclick = async () => {
+      try {
+        // Signed-out deletion: the server answers the same generic 202
+        // for any well-formed address (no enumeration). Malformed
+        // addresses are refused locally before any request is sent.
+        await configuredClient().requestAccountDeletion($('deleteEmail').value.trim());
+        show('deletion email requested. The answer is generic for any well-formed address.', {});
+      } catch (error) { fail(error); }
+    };
+
+    // Cold start: create the client from the prefilled (or restored)
+    // configuration so the device id is visible and the app-open ping
+    // fires before the first button press.
+    try { configuredClient(); } catch (error) { fail(error); }
 
   </script>
 </body>
