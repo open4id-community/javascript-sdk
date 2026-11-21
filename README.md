@@ -27,6 +27,19 @@ shows the exact callback values to paste at each provider console
 npm install @open4id/sdk
 ```
 
+## Runnable web examples
+
+This repository includes two no-build browser examples synchronized with the
+monorepo demo configuration:
+
+- [`web-sdk-minimal`](./web-sdk-minimal/) — headless client controls.
+- [`web-sdk-minimal-ui`](./web-sdk-minimal-ui/) — the SDK
+  `<open4id-auth>` dialog element.
+
+Each example is pinned to `@open4id/sdk@1.0.2` and uses a public SDK key only.
+Replace the prefilled values before adapting an example to another
+application.
+
 ### Step 2 — Create the client and bootstrap once
 
 ```ts

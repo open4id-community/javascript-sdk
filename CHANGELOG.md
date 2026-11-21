@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Web examples synchronized**: `web-sdk-minimal` and
+  `web-sdk-minimal-ui` now use the current demo application's public SDK key
+  and remain aligned with the monorepo examples. No SDK package API changed.
+
 ## 1.0.2 (2026-11-21)
 
 - **Guest identity continuity**: guest authorization requests now carry the
