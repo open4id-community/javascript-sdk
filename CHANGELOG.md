@@ -1,5 +1,57 @@
 # Changelog
 
+## 1.0.2 (2026-11-21)
+
+- **Guest identity continuity**: guest authorization requests now carry the
+  persisted SDK installation identifier so repeated guest sign-in on the same
+  installation preserves the guest identity.
+- Player API request bodies consistently include the existing `device_id`
+  attribution field.
+- SDK request headers identify this release as `1.0.2`.
+
+## 1.1.0 (unreleased)
+
+- **Publisher events**: `trackEvent(name, { value?, occurredAt?, origin? })` on
+  `Open4IDClient` and `Open4IDAuthClient` sends `POST /client/events`, the
+  explicit counterpart of the automatic `appOpen()` ping. Events are batched
+  (20 events or 10 s), retried on network/`429`/`5xx` up to five times,
+  persisted in `localStorage` (100 events / 7 days) so a reload or a closed
+  tab does not lose the tail, flushed with `sendBeacon` on `pagehide`, and
+  attributed to the signed-in player when a session exists. `trackEvent()`
+  never throws; invalid names/values/timestamps are dropped with one console
+  warning. `setTrackingEnabled(false)` clears the buffered and persisted
+  queue and stops sends — `appOpen()` is unaffected. Numbers are
+  at-least-once: a retry can inflate counts.
+- **Fixed: the installation id was re-minted on every read.** The UUID
+  validator required five hex characters in a v4 UUID's fourth group, so
+  every valid id failed the check and `getDeviceId()` minted a new one on
+  each call (only hidden in storage-less runtimes, where the ephemeral
+  fallback happened to be stable). Device-salted app-open and event rows
+  therefore looked like a new installation per call. The id is now stable
+  across reads and instances on one origin.
+
+## 1.0.0 (2026-11-15)
+
+First stable release: the headless client and `<open4id-auth>` element APIs
+are now covered by semver. No breaking changes against `0.4.2` — the two
+additions below are the release.
+
+- **App-open analytics**: `appOpen()` sends the fire-and-forget cold-start
+  ping to `client/app_open` with a locally minted installation id
+  (`getDeviceId()`, random UUID v4 persisted in `localStorage`, ephemeral in
+  memory when storage is unavailable). The ping never throws and never
+  blocks startup; the server stores only a salted hash of the id.
+  `resetDeviceId()` is the debug/support reset hook. The ping is skipped
+  when no origin is available (SSR without an explicit origin), matching
+  the web key's origin binding.
+- **Signed-out account deletion**: `requestAccountDeletion(email)` posts
+  `client/player_deletion_request` and emails the same single-use 30-minute
+  token family as the password reset. The link targets the game origin's
+  `/delete-account` page, or the Portal `/player-delete-account` page when the
+  request carries no game origin. Malformed addresses throw
+  `SdkValidationError` locally; unknown addresses still answer the generic
+  `202`. Signed-in players keep using `deleteAccount()`.
+
 ## 0.4.2 (2026-11-13)
 
 - **Guest button visibility**: the bootstrap `login` block gains
