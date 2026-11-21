@@ -61,6 +61,31 @@
     </div>
   </fieldset>
 
+  <fieldset>
+    <legend>App-open analytics (optional)</legend>
+    <p>One fire-and-forget <code>appOpen()</code> ping per page load feeds the
+    dashboard's opens/devices counters. The installation id is minted locally
+    and is attribution metadata, not a credential — the server keeps only a
+    salted hash of it.</p>
+    <p>Device id <code id="deviceId">—</code></p>
+    <div>
+      <button id="resetDevice" type="button">Reset device id</button>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Delete an account without signing in</legend>
+    <p>For a player who cannot sign in, <code>requestAccountDeletion()</code>
+    emails a single-use 30-minute link. The answer is generic for any
+    well-formed address, so it never reveals whether an account exists. The
+    link points at this origin's <code>/delete-account</code> page, which a
+    real game hosts itself — this sample stops at the request.</p>
+    <label>Email <input id="deleteEmail" type="email" placeholder="player@example.com" autocomplete="email"></label>
+    <div>
+      <button id="requestDeletion" type="button">Email deletion link</button>
+    </div>
+  </fieldset>
+
   <h2>Status</h2>
   <pre id="out">Press “Open login dialog”.</pre>
 
@@ -81,6 +106,7 @@
     const element = $('loginDialog');
     let auth = null;
     let lastConfigKey = '';
+    let appOpenSent = false;
 
     const show = (label, value) => {
       out.textContent = `${label}\n` + JSON.stringify(value, null, 2);
@@ -102,7 +128,7 @@
       }));
     }
 
-    async function ensureReady() {
+    function configuredClient() {
       // Reuse the client while the config is unchanged: recreating it
       // would wipe the in-memory session the dialog remembers.
       const key = [$('appId').value.trim(), $('environment').value,
@@ -114,14 +140,26 @@
           publicSdkKey: $('publicSdkKey').value.trim(),
           endpoint: $('endpoint').value.trim() || undefined,
           // Bound to every code the dialog flows issue; register the
-          // same string (the Angular example's value — no dashboard
-          // change needed). Nothing navigates to it here.
+          // same string (the demo app's value — no dashboard change
+          // needed). Nothing navigates to it here.
           redirectUri: `${window.location.origin}/open4id/callback`,
         });
         element.setAuthClient(auth);
         lastConfigKey = key;
+        // SDK 1.0.0 analytics: show the locally minted installation id and
+        // send one fire-and-forget cold-start ping per page load. It never
+        // throws and never blocks startup.
+        $('deviceId').textContent = auth.getDeviceId();
+        if (!appOpenSent) {
+          appOpenSent = true;
+          auth.appOpen();
+        }
       }
-      await auth.bootstrap({ platform: 'web' });
+      return auth;
+    }
+
+    async function ensureReady() {
+      await configuredClient().bootstrap({ platform: 'web' });
       // setBootstrap also preloads the Google/Apple scripts, so the
       // dialog's provider buttons can pop synchronously (Safari rule).
       element.setBootstrap(auth.getBootstrap());
@@ -191,6 +229,42 @@
         out.textContent = `error: ${error instanceof Error ? error.message : error}`;
       }
     };
+
+    $('resetDevice').onclick = () => {
+      try {
+        stash();
+        const client = configuredClient();
+        // Debug/support hook: the next app-open ping reports a new
+        // installation. The dialog keeps its bound client.
+        client.resetDeviceId();
+        $('deviceId').textContent = client.getDeviceId();
+        show('device id reset. The next app-open ping reports a new installation.', {
+          deviceId: client.getDeviceId(),
+        });
+      } catch (error) {
+        out.textContent = `error: ${error instanceof Error ? error.message : error}`;
+      }
+    };
+
+    $('requestDeletion').onclick = async () => {
+      try {
+        stash();
+        // Signed-out deletion: the server answers the same generic 202
+        // for any well-formed address (no enumeration); malformed
+        // addresses are refused locally before any request is sent.
+        await configuredClient().requestAccountDeletion($('deleteEmail').value.trim());
+        show('deletion email requested. The answer is generic for any well-formed address.', {});
+      } catch (error) {
+        out.textContent = `error: ${error instanceof Error ? error.message : error}`;
+      }
+    };
+
+    // Cold start: build the client from the prefilled (or restored)
+    // configuration so the device id is visible and the app-open ping
+    // fires before the first button press.
+    try { configuredClient(); } catch (error) {
+      out.textContent = `error: ${error instanceof Error ? error.message : error}`;
+    }
   </script>
 </body>
 </html>
